@@ -210,7 +210,7 @@
   <body onload="//prepare_tx('bc1qmgcswk0s8c0wqs2qk7s7u82f7tnmvnx9hmk84v', 'GEMZ', '0.00000002', 'c4b588eaf330de9cd3a319d2e9f7c78704c8b1fb9dd5057b42be8b6fc3ec140c');">
     <div id="content">
       <h2>Counterparty Send With Electrum</h2>
-      This form generate an OP_RETURN message for sending Counterparty tokens from the Electrum Bitcoin Wallet.<br><br>
+      This form generates an OP_RETURN message for sending Counterparty tokens from the Electrum Bitcoin Wallet.<br><br>
       UTXO (Output Point)<br>
       <input id="input_utxo"><br><br>
       Asset (Token) Name<br>
@@ -268,7 +268,7 @@
       <b>Can I receive tokens to multisig and bech32 wallets?</b><br>
       Yes.<br><br>
       <b>Can I send tokens to multisig and bech32 addresses?</b><br>
-      Yes.<br><br>
+      Yes, to multisig and 42-character bech32 (P2WPKH) but not to 62-character bech32 (P2WSH)<br><br>
       <b>Can I buy from a dispenser through Electrum?</b><br>
       Yes, a dispense is triggered by a standard Bitcoin transaction. You don't need this script for this. Electrum will not confirm the tokens though. Please view the status on xhcain.io.<br><br>
       <b>Can I issue tokens, place DEX orders, and do other Counterparty actions with Electrum?</b><br>
