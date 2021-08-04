@@ -18,10 +18,10 @@
       let tip_address = 'bc1qqqj54caf4cusvycr4dmzv24pgh875xeg8d5wrq';
 
       function prepare_inputs() {
-        let utxo = document.getElementById('input_utxo').value;
-        let asset = document.getElementById('input_asset').value;
-        let amount = document.getElementById('input_amount').value;
-        let recipient = document.getElementById('input_recipient').value;
+        let utxo = document.getElementById('input_utxo').value;            //eg a1870614c4cd1b3e20f98316f062c8622313eca4bbeb3f7bb695a61c164a45e7
+        let asset = document.getElementById('input_asset').value;          //eg FLDC
+        let amount = document.getElementById('input_amount').value;        //eg 5843.57
+        let recipient = document.getElementById('input_recipient').value;  //eg bc1qqqj54caf4cusvycr4dmzv24pgh875xeg8d5wrq
         tip_btc = document.getElementById('input_tip').value;
 
         utxo = utxo.substring(0,64);
