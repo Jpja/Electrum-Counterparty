@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>Send Counterparty Asset w/ Electrum</title>
+
+    <script src="js/lib/biginteger.js" async></script>
+    <script src="js/xcp-js/util.js" defer></script>
+    <script src="js/xcp-js/transactions.js" defer></script>
+    <script src="js/lib/idle.js"></script>
+    <script src="js/lib/lozad.min.js"></script>
+    <script src="js/lib/bitcoinjs-lib.js"></script>
+    <script src="js/lib/bitcoinjs-message.js"></script>
+    <script src="js/btc.js"></script>
+
+    <script>
+      let tip_btc = '0.0001';
+      let tip_address = 'bc1qqqj54caf4cusvycr4dmzv24pgh875xeg8d5wrq';
+
+      function prepare_inputs() {
+        let utxo = document.getElementById('input_utxo').value;
+        let asset = document.getElementById('input_asset').value;
+        let amount = document.getElementById('input_amount').value;
+        let recipient = document.getElementById('input_recipient').value;
+        tip_btc = document.getElementById('input_tip').value;
+
+        utxo = utxo.substring(0,64);
+        if (utxo.length != 64) {
+          print_result("UTXO is not valid"); return;
+        }
+        if (isNaN(amount)) {
+          print_result("Amount is not a number"); return;
+        }
+
+        prepare_tx(recipient, asset, amount, utxo);
+      }
+
+      function prepare_tx(address, asset_name, amount, utxo) {
+        console.log("Asset name:   " + asset_name);
+
+        print_result("Loading...");
+        //wait for api to return asset info
+        const api_res = fetch("https://xchain.io/api/asset/"+asset_name)
+        .then((response) => response.json())
+        .then((user) => {
+          return user;
+        });
+
+        const api_res2 = async () => {
+          let asset_info = await api_res;
+          let div = asset_info.divisible;
+          let id = asset_info.asset_id;
+
+          //sanity check. api returns correct asset name?
+          if (asset_name != asset_info.asset && asset_name != asset_info.asset_longname) {
+            print_result("Api sanity check failed"); return;
+          }
+          //sanity check for asset id
+          if (asset_name[0] == "A") { //numeric asset
+            if (id != asset_name.substr(1)) {
+              print_result("Api sanity check failed"); return;
+            } 
+          } else if (asset_name.includes(".")) { //subasset
+            //no sanity check possible
+          } else { //regular asset
+            if (id.toString(16) != assetid(asset_name)) {
+              print_result("Api sanity check failed"); return;
+            }
+          }
+
+          console.log("Divisible:    " + div);
+          if (div == 1 || div == true || div == "true") {
+            hex_opreturn_send(address, id, amount, utxo, "true"); 
+          } else if (div == 0 || div == false || div == "false") {
+            hex_opreturn_send(address, id, amount, utxo, "false")
+          } else { 
+            print_result("Api error"); return;
+          }
+        };
+        api_res2();
+      }
+
+      //https://github.com/geco/bech32-js/blob/master/bech32-js.min.js 
+      //checkbech32(address) returns 'OK' or 'KO' 
+      for(var ALPHABET="qpzry9x8gf2tvdw0s3jn54khce6mua7l",ALPHABET_MAP={},z=0;z<ALPHABET.length;z++){var x=ALPHABET.charAt(z);ALPHABET_MAP[x]=z}function polymodStep(r){var e=r>>25;return(33554431&r)<<5^996825010&-(e>>0&1)^642813549&-(e>>1&1)^513874426&-(e>>2&1)^1027748829&-(e>>3&1)^705979059&-(e>>4&1)}function prefixChk(r){for(var e=1,t=0;t<r.length;++t){var n=r.charCodeAt(t);if(n<33||126<n)return"KO";e=polymodStep(e)^n>>5}for(e=polymodStep(e),t=0;t<r.length;++t){var o=r.charCodeAt(t);e=polymodStep(e)^31&o}return e}function checkbech32(r){if(r.length<8)return"KO";if(90<r.length)return"KO";var e=r.lastIndexOf("1");if(-1===e)return"KO";if(0===e)return"KO";var t=r.slice(0,e),n=r.slice(e+1);if(n.length<6)return"KO";var o=prefixChk(t);if("string"==typeof o)return"KO";for(var f=[],A=0;A<n.length;++A){var h=n.charAt(A),a=ALPHABET_MAP[h];if(void 0===a)return"KO";o=polymodStep(o)^a,A+6>=n.length||f.push(a)}return 1!==o?"KO":"OK"}
+
+      function hex_opreturn_send(address, asset_id, amount, utxo, divisible) {
+
+        var prefix = "434e54525052545902"; //CNTRPRTY + 02 (single byte message id)
+
+        let address_hex = '';
+        if (address[0] == "1") {
+          address_hex = '00' + toHexString(bitcoinjs.address.fromBase58Check(address).hash);
+        } else if (address[0] == "3") {
+          address_hex = '05' + toHexString(bitcoinjs.address.fromBase58Check(address).hash);
+        } else if (address.toLowerCase().substr(0,4) == "bc1q" && address.length == 42 && checkbech32(address) == 'OK') {
+          address_hex = '80' + bech32toHex(address);
+        } else {
+          print_result("Wrong address"); return;
+        }
+
+        var asset_id_hex = padprefix(asset_id.toString(16), 16);
+
+        var amount_round = 0;
+        if (divisible == "true") {
+          amount_round = parseInt((amount*100000000).toFixed(0));
+        } else if (divisible == "false") {
+          amount_round = parseInt(amount);
+        } else {
+          print_result("Divisibility unknown: " + divisible);
+          return;
+        }
+        var amount_hex = padprefix((amount_round).toString(16), 16);
+
+        var data = prefix + asset_id_hex + amount_hex + address_hex;
+
+        var datachunk_encoded = xcp_rc4(utxo, data);
+
+        console.log("Asset id:     " + asset_id);
+        console.log("Asset id hex: " + asset_id_hex);
+        console.log("Amount:       " + amount);
+        console.log("Amount round: " + amount_round);
+        console.log("Amount hex:   " + amount_hex);
+        console.log("Address:      " + address);
+        console.log("Address hex:  " + address_hex);
+        console.log("UTXO:         " + utxo);
+        console.log("Data:         " + data);
+        console.log("Encoded       " + datachunk_encoded);
+
+        print_result("OP_RETURN " + datachunk_encoded + ",0" + tip_line());
+        document.getElementById("copy").disabled = false;
+      }
+
+      function print_result(data) {
+        document.getElementById('code_output').value = data;
+      }
+
+      function tip_line() {
+        if (Number(tip_btc) == 0) {
+          return "";
+        }
+        return "\n" + tip_address + "," + tip_btc;
+      }
+
+      function bech32toHex(address) { //https://en.bitcoin.it/wiki/Bech32
+        const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+        address = address.toLowerCase();
+
+        let data = [];
+        for (let p = 4; p < address.length; ++p) {
+          let d = CHARSET.indexOf(address.charAt(p));
+          if (d === -1) {
+            return null;
+          }
+          data.push(d);
+        }
+
+        let bin5 = [];
+        for (let i = 0; i <= 32; i++) {
+          //binary += data[i].toString(2).padStart(5, '0'); 
+          bin5.push(data[i].toString(2).padStart(5, '0'));
+        }
+
+        let binString = ''
+        for (let i = 0; i < bin5.length; i++) {
+          binString += bin5[i];
+        }
+
+        let bin8 = binString.match(/.{8}/g);
+
+        let hex = '';
+        for (let i = 0; i < bin8.length; i++) {
+          hex += parseInt(bin8[i], 2).toString(16).padStart(2, '0');
+        }
+        return hex;
+      }
+
+    </script>
+    <style>
+      html, body {
+        width: 100%;
+      }
+      #content {
+        font-family: Verdana, sans-serif;
+        max-width: 650px;
+        margin: auto;
+        text-align: left;
+      }
+      h2 {
+        margin-bottom: 2px;
+      }
+      input, textarea {
+        width: 100%;
+        padding: 4px 4px;
+        margin: 6px 0;
+        box-sizing: border-box;
+      }
+      button {
+        width: 30%;
+        padding: 4px 4px;
+        margin: 6px 0;
+      }
+      textarea {
+        font-size: 10px;
+      }
+    </style>
+
+  </head>
+
+  <body onload="//prepare_tx('bc1qmgcswk0s8c0wqs2qk7s7u82f7tnmvnx9hmk84v', 'GEMZ', '0.00000002', 'c4b588eaf330de9cd3a319d2e9f7c78704c8b1fb9dd5057b42be8b6fc3ec140c');">
+    <div id="content">
+      <h2>Counterparty Send With Electrum</h2>
+      This form generate an OP_RETURN message for sending Counterparty tokens from the Electrum Bitcoin Wallet.<br><br>
+      UTXO (Output Point)<br>
+      <input id="input_utxo"><br><br>
+      Asset (Token) Name<br>
+      <input id="input_asset"><br><br>
+      Amount<br>
+      <input id="input_amount"><br><br>
+      Recipient Address<br>
+      <input id="input_recipient"><br><br>
+      Optional Tip to Developer (BTC)<br>
+      <input id="input_tip"><br>
+      <button type="button" id="generate" onclick="prepare_inputs();" >Generate OP_RETURN</button><br><br>
+      <i><span style="font-size:75%">This is an experimental script. Peer review pending. Your tokens may get lost. Use at own risk!</span></i><br>
+      <textarea id="code_output" rows="2"></textarea>
+      <button type="button" id="copy" disabled onclick="document.getElementById('code_output').select();document.execCommand('copy');">Copy</button><br><br>
+
+      <h2>Instructions</h2>
+      1. Open Electrum<br>
+      2. Locate the address with your Counterparty tokens. If the btc balance is zero, top it up with enough btc to pay a miner fee.<br>
+      3. Find this address under the 'Coins' tab.<br>
+      4. Right click -> 'Spend'.<br>
+      5. Right click again -> Copy -> 'Ouput point'.<br>
+      6. Paste the UTXO (Output point) in this form.<br>
+      7. Enter asset, amount and recipient address.<br>
+      8. Include a tip if you like to support further development of this script.<br>
+      9. Click 'Generate OP_RETURN' and 'COPY' to clipboard.<br>
+      10. Open Electrum again.<br>
+      11. Click 'Send' tab.<br>
+      12. Paste into 'Pay to' field.<br>
+      13. Click 'Pay...'.<br>
+      14. Send as usual with Electrum. Make sure the fee is fine. Note the amount shall be the tip only. Electrum is not aware of Counterparty tokens.<br>
+
+      <h2>Recommended Settings</h2>
+      Optional but recommended. <br>
+      In Electrum, go to 'Preferences' -> 'Transactions':<br>
+      - Tick 'Advanced Preview'<br>
+      - Untick 'Use Change Address'<br>
+
+      <h2>Why This Script</h2>
+      I want to reduce the threshold for Bitcoin users to send tokens.<br>
+      Before this script, if you held tokens in Electrum, in order to send you had to export the private key to a Counterparty-aware wallet.<br>
+      Now your private key stays within Electrum.<br>
+
+      <h2>Risks by Using This Script</h2>
+      - Although your bitcoin keys are entirely handled by Electrum, you must be cautious while making the transaction. make sure the fee is fine, that the OP_RETURN btc amount is zero, and that any tip is reasonable.<br><br>
+      - The OP_RETURN contains all token send info and <b>is not</b> human readable nor does Electrum check it. This script does not check the asset and amount against your address either. If you input wrong values, you may lose your tokens or at the very least a bitcoin miner fee.<br><br>
+      - This script is pending peer review. Use at own risk!<br>
+
+      <h2>FAQ</h2>
+      <b>My address has several UTXOs. Which one to use?</b><br>
+      It does not matter. Pick one of them.<br><br>
+      <b>Does this script work for other wallets than Electrum?</b><br>
+      Yes, as long as it allows sending OP_RETURN data. If your wallet doesn't show UTXOs you can find them on a block explorer.<br><br>
+      <b>Can I receive tokens to my Electrum wallets?</b><br>
+      Yes. Just keep in mind that Electrum does not show token balances. Manually write a label to keep track of tokens and check the history on <a href="https://xchain.io">xchain.io</a>.<br><br>
+      <b>Can I receive tokens to multisig and bech32 wallets?</b><br>
+      Yes.<br><br>
+      <b>Can I send tokens to multisig and bech32 addresses?</b><br>
+      Yes.<br><br>
+      <b>Can I buy from a dispenser through Electrum?</b><br>
+      Yes, a dispense is triggered by a standard Bitcoin transaction. You don't need this script for this. Electrum will not confirm the tokens though. Please view the status on xhcain.io.<br><br>
+      <b>Can I issue tokens, place DEX orders, and do other Counterparty actions with Electrum?</b><br>
+      Not currently. If demand for it, I can write similar scripts for almost all Counterparty transactions.<br><br>
+
+
+      <h2>API Considerations</h2>
+      If the API is down, the script will fail. Please try again in a minute.<br><br>
+      A malicious API could not cause much harm.<br><br>
+      For regular assets the only risk is a wrong divisibility status, losing you a miner fee and potentially some token-satoshis.<br><br>
+      For subassets the asset ID could be false and theoretically cause you to send the wrong asset.<br><br>
+      I consider these risks miniscule but if you want you can check the values in console (CTRL+SHIFT+I).<br><br>
+      The API provider is Xchain.io which has served the community for years.
+
+      <h2>Credit</h2>
+      I used Loon3's <a href="https://github.com/loon3/Freeport-extension">Freeport Wallet</a> to build this script. All libraries are copied and unmodified. My code is within index.html only.<br><br>
+      API is provided by <a href="https://xchain.io">xchain.io</a>. 
+
+      <h2>License</h2>
+      MIT
+    </div> 
+  </body>
+  <script>
+    document.getElementById('input_tip').value = tip_btc;
+  </script>
+
+</html>
