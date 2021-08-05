@@ -254,7 +254,7 @@
       Now your private key stays within Electrum.<br>
 
       <h2>Risks by Using This Script</h2>
-      - Although your bitcoin keys are entirely handled by Electrum, you must be cautious while making the transaction. make sure the fee is fine, that the OP_RETURN btc amount is zero, and that any tip is reasonable.<br><br>
+      - Although your bitcoin private keys are entirely handled by Electrum, you must take care while making the transaction. Make sure the fee is fine, that the OP_RETURN btc amount is zero, and that any tip is reasonable.<br><br>
       - The OP_RETURN contains all token send info and <b>is not</b> human readable nor does Electrum check it. This script does not check the asset and amount against your address either. If you input wrong values, you may lose your tokens or at the very least a bitcoin miner fee.<br><br>
       - This script is pending peer review. Use at own risk!<br>
 
@@ -264,7 +264,7 @@
       <b>Does this script work for other wallets than Electrum?</b><br>
       Yes, as long as it allows sending OP_RETURN data. If your wallet doesn't show UTXOs you can find them on a block explorer.<br><br>
       <b>Can I receive tokens to my Electrum wallets?</b><br>
-      Yes. Just keep in mind that Electrum does not show token balances. Manually write a label to keep track of tokens and check the history on <a href="https://xchain.io">xchain.io</a>.<br><br>
+      Yes. Just keep in mind that Electrum does not show token balances. Manually add a label to keep track of tokens and check the history on <a href="https://xchain.io">xchain.io</a>.<br><br>
       <b>Can I receive tokens to multisig and bech32 wallets?</b><br>
       Yes.<br><br>
       <b>Can I send tokens to multisig and bech32 addresses?</b><br>
@@ -272,7 +272,7 @@
       <b>Can I buy from a dispenser through Electrum?</b><br>
       Yes, a dispense is triggered by a standard Bitcoin transaction. You don't need this script for this. Electrum will not confirm the tokens though. Please view the status on xchain.io.<br><br>
       <b>Can I issue tokens, place DEX orders, and do other Counterparty actions with Electrum?</b><br>
-      Not currently. If demand for it, I can write similar scripts for almost all Counterparty transactions.<br><br>
+      Not currently. But I can write similar scripts for almost all Counterparty transactions if there's any demand for it.<br><br>
 
 
       <h2>API Considerations</h2>
