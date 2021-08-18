@@ -62,6 +62,8 @@
             } 
           } else if (asset_name.includes(".")) { //subasset
             //no sanity check possible
+          } else if (asset_name.length >= 12) { //regular asset 12+ char, e.g. PEPUNCONFIRM, PEPEREPUBLIC
+            //no sanity check because bug in assetid() or BigIntegerSM()
           } else { //regular asset
             if (id.toString(16) != assetid(asset_name)) {
               print_result("Api sanity check failed"); return;
