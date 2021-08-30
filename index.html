@@ -261,18 +261,24 @@
       - This script is pending peer review. Use at own risk!<br>
 
       <h2>FAQ</h2>
+      <b>Which address formats are supported?</b><br>
+      For standard wallets, both legacy (starts with '1') and bech32 ('bc1q') sre supported.<br>
+      For multisig wallets, only legacy ('3') is supported.<br><br>
+      <b>Which address formats are <i>not</i> supported?</b><br>
+      Bech32 multisig is not supported. It is also called native segwit multisig or p2wsh.<br>
+      Such an address is much longer than a standard bech32 (62 vs 42 characters) but otherwise identical (both start with 'bc1q').<br><br>
+      <b>How to open a legacy multisig wallet?</b><br>
+      Electrum does not have this option anymore. However, there is a workaround.<br>
+      Begin by creating a new seed. Then go back and choose 'I already have a seed'. Enter the seed. You know it's correct when the text 'Seed type: segwit' appears. Now choose option 'BIP39 seed' and ignore the warnings. Then choose p2sh-segwit (legacy would also work but result in higher fees). Then continue the normal process.<br><br>
       <b>My address has several UTXOs. Which one to use?</b><br>
       It does not matter. Pick one of them.<br><br>
       <b>Does this script work for other wallets than Electrum?</b><br>
       Yes, as long as it allows sending OP_RETURN data. If your wallet doesn't show UTXOs you can find them on a block explorer.<br><br>
-      <b>Can I receive tokens to my Electrum wallets?</b><br>
-      Yes. Just keep in mind that Electrum does not show token balances. Manually add a label to keep track of tokens and check the history on <a href="https://xchain.io">xchain.io</a>.<br><br>
-      <b>Can I receive tokens to multisig and bech32 wallets?</b><br>
-      Yes.<br><br>
-      <b>Can I send tokens to multisig and bech32 addresses?</b><br>
-      Yes, to multisig and 42-character bech32 (P2WPKH) but not to 62-character bech32 (P2WSH)<br><br>
+      <b>Can I receive tokens to my Electrum wallet?</b><br>
+      Yes, unless you have multisig bech32 wallet. Just keep in mind that Electrum does not show token balances. Manually add a label to keep track of tokens and check the history on <a href="https://xchain.io">xchain.io</a>.<br><br>
       <b>Can I buy from a dispenser through Electrum?</b><br>
-      Yes, a dispense is triggered by a standard Bitcoin transaction. You don't need this script for this. Electrum will not confirm the tokens though. Please view the status on xchain.io.<br><br>
+      Yes, a dispense is triggered by a standard Bitcoin transaction. Multisig bech32 is the exception and will not work.<br>
+      Also keep in mind that Electrum will not confirm the tokens. Please view the status on xchain.io.<br><br>
       <b>Can I issue tokens, place DEX orders, and do other Counterparty actions with Electrum?</b><br>
       Not currently. But I can write similar scripts for almost all Counterparty transactions if there's any demand for it.<br><br>
 
