@@ -262,18 +262,19 @@
 
       <h2>FAQ</h2>
       <b>Which address formats are supported?</b><br>
-      For standard wallets, both legacy (starts with '1') and bech32/segwit ('bc1q') are supported.<br>
-      For multisig wallets, only legacy ('3') is supported.<br><br>
+      - legacy, prefix '1' (p2pkh)<br>
+      - native segwit, prefix 'bc1q' and 42 char length (bech32, p2wpkh).<br>
+      - legacy multisig, prefix '3' (p2sh).<br>
+      - nested segwit, prefix '3', identical to p2sh (p2wsh-p2sh).<br><br>
       <b>Which address formats are <i>not</i> supported?</b><br>
-      Bech32 multisig is not supported. It is also called native segwit multisig or p2wsh.<br>
-      Such an address is much longer than a standard bech32 (62 vs 42 characters) but otherwise identical (both start with 'bc1q').<br><br>
+      - multisig segwit, prefix 'bc1q' and 62 char length (bech32, p2wsh).<br><br>
       <b>Show me examples</b><br>
       Supported:<br>
-      <pre>1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa</pre><br>
-      <pre>bc1qqqj54caf4cusvycr4dmzv24pgh875xeg8d5wrq</pre><br>
-      <pre>34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo</pre><br>
+      <code>- 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa</code><br>
+      <code>- bc1qqqj54caf4cusvycr4dmzv24pgh875xeg8d5wrq</code><br>
+      <code>- 34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo</code><br>
       Not supported:<br>
-      <pre>bc1qgdjqv0av3q56jvd82tkdjpy7gdp9ut8tlqmgrpmv24sq90ecnvqqjwvw97</pre><br><br>      
+      <code>- bc1qgdjqv0av3q56jvd82tkdjpy7gdp9ut8tlqmgrpmv24sq90ecnvqqjwvw97</code><br><br>      
       <b>How to open a legacy multisig wallet?</b><br>
       Electrum does not have this option anymore. However, there is a workaround.<br>
       Begin by creating a new seed. Then go back and choose 'I already have a seed'. Enter the seed. You know it's correct when the text 'Seed type: segwit' appears. Now choose option 'BIP39 seed' and ignore the warnings. Then choose p2sh-segwit (legacy would also work but result in higher fees). Then continue the normal process.<br><br>
@@ -282,9 +283,9 @@
       <b>Does this script work for other wallets than Electrum?</b><br>
       Yes, as long as it allows sending OP_RETURN data. If your wallet doesn't show UTXOs you can find them on a block explorer.<br><br>
       <b>Can I receive tokens to my Electrum wallet?</b><br>
-      Yes, unless you have a multisig bech32 wallet. Just keep in mind that Electrum does not show token balances. Manually add a label to keep track of tokens and check the history on <a href="https://xchain.io">xchain.io</a>.<br><br>
+      Yes, unless you have a multisig segwit wallet. Just keep in mind that Electrum does not show token balances. Manually add a label to keep track of tokens and check the history on <a href="https://xchain.io">xchain.io</a>.<br><br>
       <b>Can I buy from a dispenser through Electrum?</b><br>
-      Yes, a dispense is triggered by a standard Bitcoin transaction. Multisig bech32 is the exception and will not work.<br>
+      Yes, a dispense is triggered by a standard Bitcoin transaction. Multisig segwit is the exception and will not work.<br>
       Also keep in mind that Electrum will not confirm the tokens. Please view the status on xchain.io.<br><br>
       <b>Can I issue tokens, place DEX orders, and do other Counterparty actions with Electrum?</b><br>
       Not currently. But I can write similar scripts for almost all Counterparty transactions if there's any demand for it.<br><br>
