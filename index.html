@@ -41,15 +41,28 @@
         print_result("Loading...");
         //wait for api to return asset info
         const api_res = fetch("https://xchain.io/api/asset/"+asset_name)
-        .then((response) => response.json())
+        //.then((response) => response.json())
+        .then((response) => response.text())
         .then((user) => {
           return user;
         });
 
         const api_res2 = async () => {
           let asset_info = await api_res;
+
+          //sometimes asset_id > max_safe_integer
+          //converting to string solves the problem
+          asset_info = asset_info.replace(/("[^"]*"\s*:\s*)(\d{16,})/g, '$1"$2"');
+          asset_info = JSON.parse(asset_info);
+
           let div = asset_info.divisible;
           let id = asset_info.asset_id;
+          if (asset_name[0] == "A") { //numeric asset
+            id = asset_info.asset.substr(1);
+          }
+          if (asset_name.includes(".")) { //subasset
+            id = asset_info.asset.substr(1);
+          }
 
           //sanity check. api returns correct asset name?
           if (asset_name != asset_info.asset && asset_name != asset_info.asset_longname) {
@@ -57,15 +70,13 @@
           }
           //sanity check for asset id
           if (asset_name[0] == "A") { //numeric asset
-            if (id != asset_name.substr(1)) {
+            if (id != asset_name.substr(1) && id != "9223372036854775807") {
               print_result("Api sanity check failed"); return;
             } 
           } else if (asset_name.includes(".")) { //subasset
             //no sanity check possible
-          } else if (asset_name.length >= 12) { //regular asset 12+ char, e.g. PEPUNCONFIRM, PEPEREPUBLIC
-            //no sanity check because bug in assetid() or BigIntegerSM()
           } else { //regular asset
-            if (id.toString(16) != assetid(asset_name)) {
+            if (BigInt(id).toString(16) != assetid(asset_name)) {
               print_result("Api sanity check failed"); return;
             }
           }
@@ -101,16 +112,18 @@
           print_result("Wrong address"); return;
         }
 
-        var asset_id_hex = padprefix(asset_id.toString(16), 16);
+        var asset_id_hex = padprefix(BigInt(asset_id).toString(16), 16);
 
         var amount_round = 0;
         if (divisible == "true") {
+          if (amount > 90000000) { //potential precision bug
+            print_result("Amounts over 90,000,000 not supported"); return;
+          }
           amount_round = parseInt((amount*100000000).toFixed(0));
         } else if (divisible == "false") {
           amount_round = parseInt(amount);
         } else {
-          print_result("Divisibility unknown: " + divisible);
-          return;
+          print_result("Divisibility unknown: " + divisible); return;
         }
         var amount_hex = padprefix((amount_round).toString(16), 16);
 
