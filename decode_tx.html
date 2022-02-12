@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Counterparty Decoder</title>
+    <script>
+
+      let example_txs = [
+        'da3ed1efda82824cb24ea081ef2a8f532a7dd9cd1ebc5efa873498c3958c864e', //0  Classic send - 501 JPGOLD
+        '585f50f12288cd9044705483672fbbddb71dff8198b390b40ab3de30db0a88dd', //1  Classic send - 0.2 XCP
+        'd9bdf3b63b8283744762713aa72621822e9562e5823f44366edde017e00d3da8', //2  Enhanced send - 497.83516484 XCP
+        '11ae7493f5a8ef8691b391a95dd9e649afb21f449c5de67d4f6a02fce72d3645', //3  Enhanced send with memo
+        'b55c5745a6106314e41f68c8f4f96afcdf4f637ecbf2165cb454983e28843e3a', //4  DEX order
+        '1c10c283e7aa2baf8977fa6c15556f4934ac7238c65f47fa47cd836918d5546b', //5  DEX order with BTC
+        'be13ee06eee97c44c550c6297d6845f8963ef3461b4b9668207f65273d8aaf1b', //6  Btcpay (after order match)
+        '49896f6115956c2f9baddb9cf0991ba114d010bfffcc73f1d3ddb8e4267aa272', //7  Dispenser - JPJA 
+        '8aad0368ee12b380d77437a5bfc9a9a19a4b6e96d0127e52b92d4bf44736cb44', //8  Dispenser - LOCHNESS - separate address 
+        'e5e9f6a63ede5315994cf2d8a5f8fe760f1f37f6261e5fbb1263bed54114768a', //9  Issuance - OLGA
+        '34da6ecf10c66ed659054aa6c71900c807875cb57b96abea4cee4f7a831ed690', //10 Issuance - lock OLGA
+        '541e640fbb527c35e0ee32d724efa4a5506c4c52acfba1ebc3b45949780c08a8', //11 Issuance - transfer SALVATION ownership
+        '21c2cd5b369c2e7a350bf92ad43c31e5abb0aa85ccba11368b08f9f4abb8e0af', //12 Broadcast - jpja.net 
+        '9d356c8c455e0be7381c6f35413d0b45c00947797f9df193c583337ac11e1c24', //13 Broadcast - Chinese 
+        '627ae48d6b4cffb2ea734be1016dedef4cee3f8ffefaea5602dd58c696de6b74', //14 Broadcast - OLGA image
+        '756df60b4a97ac41912a03b95ea4b027ed9d9d07fce3fc0a2de8744e6fc5cd94'  //15 Dividend - JPBULL to JPBEAR holders 
+      ];
+
+      let msg_type = [];
+      msg_type[0]  = 'Classic Send';
+      msg_type[2]  = 'Enhanced Send';
+      msg_type[10] = 'DEX Order';
+      msg_type[11] = 'Btcpay';
+      msg_type[12] = 'Dispenser';
+      msg_type[20] = 'Issuance';
+      msg_type[30] = 'Broadcast';
+      msg_type[50] = 'Dividend';
+
+      const queryString = window.location.search;
+      const urlParams = new URLSearchParams(queryString);
+      let tx = urlParams.get('tx');
+      if (tx == 'random') tx = example_txs[Math.floor(Math.random() * example_txs.length)];
+      if (!isNaN(tx)) tx = example_txs[parseInt(tx)];
+
+      async function get(tx) {
+        let url = 'https://api.blockcypher.com/v1/btc/main/txs/' + tx + '?instart=0&outstart=0&limit=200';
+        let obj = await (await fetch(url)).json();
+        return obj;
+      }
+      let json;
+
+      if (tx.length == 64) get_json(tx);
+
+      function get_json(tx) {
+        (async () => {
+          json = await get(tx)
+          decode(json);
+        })()
+      }
+
+      function decode(json) {
+        json = JSON.parse(JSON.stringify(json));
+        let hash = json['hash'];
+        let block_height = json['block_height'];
+        let fees = json['fees'];
+        let size = json['size'];
+        let vsize = json['vsize'];
+        let confirmed = json['confirmed'];
+        let from_addr = json['addresses'][0];
+        let utxo = json['inputs'][0]['prev_hash'];
+        let first_send_sat = json['outputs'][0]['value'];
+        console.log('*** API DATA ***');
+        console.log(hash);
+        console.log(block_height);
+        console.log(from_addr);
+        console.log('utxo: ' + utxo);
+        let script_type = [];
+        let script = [];
+        let to_addr = [];
+        for (const x of json['outputs']) {
+          let type = x['script_type'];
+          script_type.push(type);
+          if (type == 'pay-to-pubkey-hash') {
+            script.push('0');
+            to_addr.push(x['addresses'][0]);
+          } else if (type == 'pay-to-multi-pubkey-hash') {
+            script.push(x['script']);
+            to_addr.push('0');
+          } else if (type == 'null-data') {
+            script.push(x['data_hex']);
+            to_addr.push('0');
+          } else {
+            script.push('?');
+            to_addr.push('?');
+          }
+          console.log(script_type.at(-1));
+          console.log(script.at(-1));
+          console.log(to_addr.at(-1));
+        }
+
+        //DECODE TX
+        let recipient = '0';
+        let cp_msg = '';
+
+        if (script_type[0] == 'pay-to-pubkey-hash') {
+          //possibly classic send, asset transfer (issuance) or btc_pay.
+          //these always send some btc dust to recipent at output 0.
+          recipient = to_addr[0];
+        }
+
+        let encoding = '';
+        for (let i = 0; i < script.length; i++) {
+
+          if (script_type[i] == 'null-data') {
+            encoding = 'op_return';
+            let raw = script[i];
+            raw = xcp_rc4(utxo, raw);
+            if (raw.substring(0, 16) == '434e545250525459') {
+              //raw = raw.substring(16);
+            } else {
+              raw = '';
+            }
+            cp_msg += raw;
+            console.log('opreturn   ' + cp_msg);
+          }
+
+          if (script_type[i] == 'pay-to-multi-pubkey-hash' && script[i].length == 142) {
+            encoding = 'multisig (old type, not rc4 encoded)';
+            let len = script[i].substring(72, 74);
+            len = parseInt(hexToDec(len));
+            let raw = script[i].substring(74, 74+(len*2));
+            if (raw.substring(0, 16) == '434e545250525459' || cp_msg.substring(0, 16) == '434e545250525459') {
+              cp_msg += raw;
+            }
+            console.log('old msig   ' + len + '   ' + cp_msg);
+          }
+
+          if (script_type[i] == 'pay-to-multi-pubkey-hash' && script[i].length == 210) {
+            encoding = 'multisig';
+            let raw = script[i].substring(6, 68) + script[i].substring(74, 136);
+            raw = xcp_rc4(utxo, raw);
+            let len = raw.substring(0, 2);
+            len = parseInt(hexToDec(len));
+            raw = raw.substring(2, 2+(len*2));
+            if (raw.substring(0, 16) == '434e545250525459' && cp_msg.substring(0, 16) == '434e545250525459') {
+              raw = raw.substring(16);
+            } else if (raw.substring(0, 16) == '434e545250525459') {
+              //i.e. first msg, keep prefix
+            } else {
+              raw = ''; 
+            }
+            cp_msg += raw;
+            console.log('msig   ' + len + '   ' + cp_msg);
+          }
+        }
+
+
+        //WRITE TX DATA
+        let out = '';        
+        out += wl('BITCOIN DATA', '');
+        out += wl('Tx ID', hash);
+        out += wl('Address', from_addr);
+        out += wl('Datestamp', confirmed);
+        out += wl('Size', size);
+        out += wl('Vsize', vsize);
+        out += wl('Fee (sat)', fees);
+        out += wl('Fee (btc)', (fees/100000000).toFixed(8));
+        out += wl(' ', '');
+        out += wl('COUNTERPARTY DATA', '');
+
+        if (cp_msg.substring(0, 16) != '434e545250525459') {
+          out += wl('No Counterparty data found!', '');
+          document.getElementById("output").innerHTML = out;
+          output2(hash);
+          return;
+        }
+
+
+        //RAW CNTRPRTY DATA
+        let raw_ascii = hex2aq(cp_msg);
+        console.log(cp_msg);
+        console.log(raw_ascii);
+        out += wl('Encoding', encoding);    
+        out += wl('Raw (hex)', cp_msg);    
+        out += wl('Raw (ascii)', raw_ascii);
+
+
+        //GENERAL PREFIX
+        let prefix_hex = cp_msg.substring(0,16);
+        let prefix = hex2a(prefix_hex);
+        out += wl('Prefix (hex)', prefix_hex);    
+        out += wl('Prefix', prefix);    
+
+
+        //DISSECT DATA
+        cp_msg = cp_msg.substring(16);
+        let id_hex = cp_msg.substring(0,2);
+        if (id_hex == '00') {
+          id_hex = cp_msg.substring(0,8);
+          cp_msg = cp_msg.substring(8);
+        } else {
+          cp_msg = cp_msg.substring(2);
+        }
+        let id = parseInt(id_hex, 16);
+        out += wl('Type (hex)', id_hex);
+        out += wl('Type (int)', id);
+        out += wl('Type', msg_type[id]);
+
+        if (id == 0) { //Classic Send
+          let asset_hex = cp_msg.substring(0,16);
+          let asset = parseInt(asset_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          let q_hex = cp_msg.substring(0,16);
+          let q = parseInt(q_hex, 16);
+          out += wl('Recipient', recipient);
+          out += wl('Dust (sat)', first_send_sat);
+          out += wl('Dust (btc)', (first_send_sat/100000000).toFixed(8));
+          out += wl('Asset (hex)', asset_hex);
+          out += wl('Asset (int)', asset);
+          out += wl('Asset', asset_name(asset));
+          out += wl('Amount (hex)', q_hex);
+          out += wl('Amount (sat)', q);
+        }
+
+        if (id == 2) { //Enhanced Send
+          let asset_hex = cp_msg.substring(0,16);
+          let asset = parseInt(asset_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          let q_hex = cp_msg.substring(0,16);
+          let q = parseInt(q_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          let recipient_hex = cp_msg.substring(0,42);
+          cp_msg = cp_msg.substring(42);
+          let memo_hex = cp_msg;
+          let memo = hex2a(memo_hex);       
+          out += wl('Recipient (hex)', recipient_hex);
+          out += wl('Asset (hex)', asset_hex);
+          out += wl('Asset (int)', asset);
+          out += wl('Asset', asset_name(asset));
+          out += wl('Amount (hex)', q_hex);
+          out += wl('Amount (sat)', q);
+          out += wl('Memo (hex)', memo_hex);
+          out += wl('Memo (text)', memo);
+        }
+
+        if (id == 10) { //DEX Order
+          let give_asset_hex = cp_msg.substring(0,16);
+          let give_asset = parseInt(give_asset_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          let give_q_hex = cp_msg.substring(0,16);
+          let give_q = parseInt(give_q_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          let get_asset_hex = cp_msg.substring(0,16);
+          let get_asset = parseInt(get_asset_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          let get_q_hex = cp_msg.substring(0,16);
+          let get_q = parseInt(get_q_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          let exp_hex = cp_msg.substring(0,4);
+          let exp = parseInt(exp_hex, 16);
+          out += wl('Give Asset (hex)', give_asset_hex);
+          out += wl('Give Asset (int)', give_asset);
+          out += wl('Give Asset', asset_name(give_asset));
+          out += wl('Give Amount (hex)', give_q_hex);
+          out += wl('Give Amount (sat)', give_q);
+          out += wl('Get Asset (hex)', get_asset_hex);
+          out += wl('Get Asset (int)', get_asset);
+          out += wl('Get Asset', asset_name(get_asset));
+          out += wl('Get Amount (hex)', get_q_hex);
+          out += wl('Get Amount (sat)', get_q);
+          out += wl('Expiration (hex)', exp_hex);
+          out += wl('Expiration (int)', exp);
+        }
+
+        if (id == 11) { //Btcpay
+          let order_0 = cp_msg.substring(0,64);
+          cp_msg = cp_msg.substring(64);
+          let order_1 = cp_msg.substring(0,64);
+          out += wl('Order 0', order_0);
+          out += wl('Order 1', order_1);
+          out += wl('Pay To', recipient);
+          out += wl('Pay (sat)', first_send_sat);
+          out += wl('Pay (btc)', (first_send_sat/100000000).toFixed(8));
+        }
+
+        if (id == 12) { //Dispenser
+          let asset_hex = cp_msg.substring(0,16);
+          let asset = parseInt(asset_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          let give_q_hex = cp_msg.substring(0,16);
+          let give_q = parseInt(give_q_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          let esc_q_hex = cp_msg.substring(0,16);
+          let esc_q = parseInt(esc_q_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          let btc_q_hex = cp_msg.substring(0,16);
+          let btc_q = parseInt(btc_q_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          let status_hex = cp_msg.substring(0,2);
+          let status = parseInt(status_hex, 16);
+          cp_msg = cp_msg.substring(2);
+          let disp_addr_hex = cp_msg;
+          out += wl('Asset (hex)', asset_hex);
+          out += wl('Asset (int)', asset);
+          out += wl('Asset', asset_name(asset));
+          out += wl('Give Amount (hex)', give_q_hex);
+          out += wl('Give Amount (sat)', give_q);
+          out += wl('Escr. Amount (hex)', esc_q_hex);
+          out += wl('Escr. Amount (sat)', esc_q);
+          out += wl('BTC Amount (hex)', btc_q_hex);
+          out += wl('BTC Amount (sat)', btc_q);
+          out += wl('BTC Amount', (btc_q/100000000).toFixed(8));
+          out += wl('Status (hex)', status_hex);
+          out += wl('Status (int)', status);
+          out += wl('Dis. Address (hex)', disp_addr_hex);  
+        }
+
+        if (id == 20) { //Issuance
+          let asset_hex = cp_msg.substring(0,16);
+          let asset = parseInt(asset_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          let q_hex = cp_msg.substring(0,16);
+          let q = parseInt(q_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          let div_hex = cp_msg.substring(0,2);
+          let div = parseInt(div_hex, 16);
+          cp_msg = cp_msg.substring(2);
+          let call_hex = cp_msg.substring(0,2);
+          let call = parseInt(call_hex, 16);
+          cp_msg = cp_msg.substring(2);
+          let call_date_hex = cp_msg.substring(0,8);
+          let call_date = parseInt(call_date_hex, 16);
+          cp_msg = cp_msg.substring(8);
+          let call_price_hex = cp_msg.substring(0,8);
+          let call_price = parseInt(call_price_hex, 16);
+          cp_msg = cp_msg.substring(8);
+          let len_hex = cp_msg.substring(0,2);;
+          let len = parseInt(len_hex, 16);
+          cp_msg = cp_msg.substring(2);
+          let descr_hex = cp_msg;
+          let descr = hex2a(descr_hex);
+          //descr = unescape(encodeURIComponent(descr));
+          descr = decodeURIComponent(escape(descr));
+          if (recipient != '0') {
+            out += wl('Transfer To', recipient);
+            out += wl('Dust (sat)', first_send_sat);
+            out += wl('Dust (btc)', (first_send_sat/100000000).toFixed(8));
+          }
+          out += wl('Asset (hex)', asset_hex);
+          out += wl('Asset (int)', asset);
+          out += wl('Asset', asset_name(asset));
+          out += wl('Issue Amount (hex)', q_hex);
+          out += wl('Issue Amount (sat)', q);
+          out += wl('Divisible (hex)', div_hex);
+          //out += wl('Divisible', div);
+          out += wl('Callable (hex)', call_hex);
+          //out += wl('Callable', call);
+          out += wl('Call Date (hex)', call_date_hex);
+          //out += wl('Call Date (int)', call_date);
+          out += wl('Call Price (hex)', call_price_hex);
+          //out += wl('Call Price (sat)', call_price);
+          out += wl('Descr Length (hex)', len_hex);
+          out += wl('Descr Length (int)', len);
+          out += wl('Description (hex)', descr_hex);
+          out += wl('Description', descr);
+        }
+
+        if (id == 30) { //Broadcast
+          let ts_hex = cp_msg.substring(0,8);
+          let ts = parseInt(ts_hex, 16);
+          cp_msg = cp_msg.substring(8);
+          let value_hex = cp_msg.substring(0,16);
+          let value = parseInt(value_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          let fee_hex = cp_msg.substring(0,8);
+          let fee = parseInt(fee_hex, 16);
+          cp_msg = cp_msg.substring(8);
+          //almost all broadcast texts begin with a length byte
+          // but very long texts do not
+          // assume this applies when > 200 chars]
+          let chars_left = cp_msg.length;
+          let len_hex = cp_msg.substring(0,2);
+          let len = parseInt(len_hex, 16);
+          if (chars_left < 200) {
+            cp_msg = cp_msg.substring(2);
+          }
+          let text_hex = cp_msg;
+          let text = hex2a(text_hex);        
+          text = decodeURIComponent(escape(text.substring(0)));
+          out += wl('Timestamp (hex)', ts_hex);
+          out += wl('Timestamp (int)', ts);
+          out += wl('Value (hex)', value_hex);
+          out += wl('Fee (hex)', fee_hex);
+          out += wl('Fee (int)', fee);
+          if (chars_left < 200) {
+            out += wl('Text Length (hex)', len_hex);
+            out += wl('Text Length (int)', len);
+          }
+          out += wl('Text (hex)', text_hex);
+          out += wl('Text (int)', text);
+        }
+
+        if (id == 50) { //Dividend
+          let div_q_hex = cp_msg.substring(0,16);
+          let div_q = parseInt(div_q_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          let asset_hex = cp_msg.substring(0,16);
+          let asset = parseInt(asset_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          let asset2_hex = cp_msg.substring(0,16);
+          let asset2 = parseInt(asset2_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          out += wl('Div. Amount (hex)', div_q_hex);
+          out += wl('Div. Amount (sat)', div_q);
+          out += wl('Asset (hex)', asset_hex);
+          out += wl('Asset (int)', asset);
+          out += wl('Asset', asset_name(asset));
+          out += wl('Div. Asset (hex)', asset2_hex);
+          out += wl('Div. Asset (int)', asset2);
+          out += wl('Div. Asset', asset_name(asset2));
+        }
+
+        document.getElementById("output").innerHTML = out;
+        output2(hash);
+      }
+
+      function output2(tx) {
+        let out = '<br><br>';
+        out += 'View on: ';
+        out += '<a href="https://xchain.io/tx/' + tx + '">Xchain</a> – ';
+        out += '<a href="https://live.blockcypher.com/btc/tx/' + tx + '/">BlockCypher</a> – ';
+        out += '<a href="https://www.blockchain.com/btc/tx/' + tx + '">Blockchain.com</a> – ';
+        out += '<a href="https://blockstream.info/tx/' + tx + '">Blockstream</a>';
+        document.getElementById("output2").innerHTML = out;
+      }
+      
+      function wl(title, info) {
+        return title.padEnd(18, ' ') + ' ' + chunk(info, '<br>'+''.padEnd(19,' '), 64) + '<br>';
+      }
+
+      function chunk(str, sep, n) {
+        str = String(str);
+        var ret = [];
+        var i;
+        var len;
+        for(i = 0, len = str.length; i < len; i += n) {
+          ret.push(str.substr(i, n))
+        }
+        return ret.join(sep);
+      };
+
+      function hex2a(hexx) {
+        var hex = hexx.toString();//force conversion
+        var str = '';
+        for (var i = 0; i < hex.length; i += 2)
+          str += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+        return str;
+      }
+
+      function hex2aq(hexx) {
+        var hex = hexx.toString();//force conversion
+        var str = '';
+        for (var i = 0; i < hex.length; i += 2) {
+          let int = parseInt(hex.substr(i, 2), 16);
+          if (int >= 32 && int <= 126) {
+            str += String.fromCharCode(int);
+          } else {
+            str += '?';
+          }
+        }
+        return str;
+      }
+
+      function xcp_rc4(key, datachunk) {
+        return bin2hex(rc4(hex2bin(key), hex2bin(datachunk)));
+      }
+
+      function hex2bin(hex) {
+        var bytes = [];
+        var str;
+        for (var i = 0; i < hex.length - 1; i += 2) {
+          var ch = parseInt(hex.substr(i, 2), 16);
+          bytes.push(ch);
+        }
+        str = String.fromCharCode.apply(String, bytes);
+        return str;
+      };
+
+      function bin2hex(s) {
+        // http://kevin.vanzonneveld.net
+        var i, l, o = "",
+            n;
+        s += "";
+        for (i = 0, l = s.length; i < l; i++) {
+          n = s.charCodeAt(i).toString(16);
+          o += n.length < 2 ? "0" + n : n;
+        }
+        return o;
+      }; 
+
+      function rc4(key, str) {
+        //https://gist.github.com/farhadi/2185197
+        var s = [], j = 0, x, res = '';
+        for (var i = 0; i < 256; i++) {
+          s[i] = i;
+        }
+        for (i = 0; i < 256; i++) {
+          j = (j + s[i] + key.charCodeAt(i % key.length)) % 256;
+          x = s[i];
+          s[i] = s[j];
+          s[j] = x;
+        }
+        i = 0;
+        j = 0;
+        for (var y = 0; y < str.length; y++) {
+          i = (i + 1) % 256;
+          j = (j + s[i]) % 256;
+          x = s[i];
+          s[i] = s[j];
+          s[j] = x;
+          res += String.fromCharCode(str.charCodeAt(y) ^ s[(s[i] + s[j]) % 256]);
+        }
+        return res;
+      }
+
+      function hexToDec(s) {
+        var i, j, digits = [0], carry;
+        for (i = 0; i < s.length; i += 1) {
+          carry = parseInt(s.charAt(i), 16);
+          for (j = 0; j < digits.length; j += 1) {
+            digits[j] = digits[j] * 16 + carry;
+            carry = digits[j] / 10 | 0;
+            digits[j] %= 10;
+          }
+          while (carry > 0) {
+            digits.push(carry % 10);
+            carry = carry / 10 | 0;
+          }
+        }
+        return digits.reverse().join('');
+      }
+
+      function asset_name(id) {
+        if (id == 0) return 'BTC';
+        if (id == 1) return 'XCP';
+        if (id >= 95428956661682177) return 'numerical or sub-asset';
+        if (id > 9007199254740991) return 'max int error'; //a few very long asset names. would need bigint
+        let b26_digits = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'; 
+        let n = id;
+        let name = '';
+        do {
+          let mod = n % 26;
+          name = b26_digits[mod] + name;
+          n -= mod;
+          n /= 26;
+        } while (n > 0);
+        return name;
+      }
+
+    </script>
+
+    <style>
+      #content {
+        font-family: Helvetica, sans-serif;
+        margin: auto;
+        max-width: 900px;
+        border: 2px solid #8B8B81;
+        border-radius: 12px;
+        background-color: #F5F5F5;
+        padding: 20px;
+        text-align: left;
+      }
+      #output {
+        font-family: courier, consolas, monospace;
+        white-space: pre;
+      }
+      h1 {
+        margin-top: -4px; 
+      }
+      input[type=text] {
+        width: 75%; 
+      }
+      input[type=submit] {
+        width: 12em; 
+        margin-top: 7px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="content">
+
+      <h1>Counterparty Decoder</h1>
+      <p>Enter a Bitcoin transaction ID.</p>
+      <p>
+        <input type="text" id="txid" name="txid" placeholder=""><br>
+        <input type="submit" value="Submit" onclick="get_json(document.getElementById('txid').value);">
+      </p>
+      <p>This script collects tx details from the Blockcypher API<br>and extracts Counterparty data.</p>
+      <div id="output"> </div>
+      <div id="output2"> </div>
+      <div id="footer"><br><br>
+        Beta software!<br><br>
+        Not all encodings and transaction types are supported.<br><br>
+        This script cannot determine if a tx is <i>valid</i>, i.e. in accordance with consensus rules or not.<br><br>
+        For more info, read <a href="https://jpjanssen.com/how-to-reverse-engineer-counterparty-txs/">blog post</a>.<br>
+        <br><br>Made by JP Janssen<br>
+        MIT license<br><br>
+        <a href="https://jpjanssen.com/donation-dispensers-for-my-xcp-projects/">Donate</a><br>
+        BTC: bc1qg8vldv8kk4mqafs87z2yv0xpq4wr4csucr3cj7<br>
+        DOGE: DChdsuLuEvAPZb9ZXpiEpimgidSJ5VqShq<br>
+        ETH: 0x4144CbaF54044510AB2F2f3c51061Dd5558cD604<br>
+        <i>BTC and DOGE addresses have dispensers installed.<br>
+          You automatically get vintage tokens in return.</i>
+      </div>
+    </div>
+  </body>
+</html>
