@@ -373,13 +373,16 @@
           let fee_hex = cp_msg.substring(0,8);
           let fee = parseInt(fee_hex, 16);
           cp_msg = cp_msg.substring(8);
-          //almost all broadcast texts begin with a length byte
-          // but very long texts do not
-          // assume this applies when > 200 chars]
+          //most broadcast texts begin with a length byte
+          // but not all do. I don't know why.
+          //assume first byte is length byte if it matches length. 
+          // else it's the first text character 
           let chars_left = cp_msg.length;
           let len_hex = cp_msg.substring(0,2);
           let len = parseInt(len_hex, 16);
-          if (chars_left < 200) {
+          let len_byte = false;
+          if (len*2+2 == chars_left) {
+            len_byte = true;
             cp_msg = cp_msg.substring(2);
           }
           let text_hex = cp_msg;
@@ -390,7 +393,7 @@
           out += wl('Value (hex)', value_hex);
           out += wl('Fee (hex)', fee_hex);
           out += wl('Fee (int)', fee);
-          if (chars_left < 200) {
+          if (len_byte) {
             out += wl('Text Length (hex)', len_hex);
             out += wl('Text Length (int)', len);
           }
