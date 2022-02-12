@@ -158,7 +158,7 @@
         out += wl('BITCOIN DATA', '');
         out += wl('Tx ID', hash);
         out += wl('Address', from_addr);
-        out += wl('Datestamp', confirmed);
+        out += wl('Timestamp', confirmed);
         out += wl('Size', size);
         out += wl('Vsize', vsize);
         out += wl('Fee (sat)', fees);
@@ -390,6 +390,7 @@
           text = decodeURIComponent(escape(text.substring(0)));
           out += wl('Timestamp (hex)', ts_hex);
           out += wl('Timestamp (int)', ts);
+          out += wl('Timestamp', print_ts(ts));
           out += wl('Value (hex)', value_hex);
           out += wl('Fee (hex)', fee_hex);
           out += wl('Fee (int)', fee);
@@ -556,6 +557,12 @@
           n /= 26;
         } while (n > 0);
         return name;
+      }
+      
+      function print_ts(ts) {
+        //integer timestamp to ISO string
+        let d = new Date(ts*1000);
+        return d.toISOString();  
       }
 
     </script>
