@@ -721,13 +721,13 @@
         const hrp = 'bc';
 
         //remove version byte ('80') from hex string
-        hex = hex.substring(2)
+        hex = hex.substring(2);
 
         //the rest follows step 3 on https://en.bitcoin.it/wiki/Bech32
         // convert hex string to binary format
         const binaryString = hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16).toString(2).padStart(8, '0')).join('');
 
-        // Split binary string into 5-bit chunks and convert to integer array
+        //Split binary string into 5-bit chunks and convert to integer array
         const intArray = binaryString.match(/.{1,5}/g).map(chunk => parseInt(chunk, 2));
 
         //Add the witness version byte in front
@@ -740,8 +740,8 @@
         intArray.push(...chk);
 
         //Map to bech32 charset
-        const charset = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
-        let addr = 'bc1'
+        const charset = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+        let addr = hrp + '1';
         for (let i = 0; i < intArray.length; i++) {
           addr += charset.charAt(intArray[i]);
         }
