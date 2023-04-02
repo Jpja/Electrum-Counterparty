@@ -389,6 +389,45 @@
           out += wl('Description', descr);
         }
 
+        if (id == 21 && block_height < 753500) { //Issuance (Subasset), pre change 2022
+          let asset_hex = cp_msg.substring(0,16);
+          let asset = BigInt('0x'+asset_hex).toString(10);
+          cp_msg = cp_msg.substring(16);
+          let q_hex = cp_msg.substring(0,16);
+          let q = parseInt(q_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          let div_hex = cp_msg.substring(0,2);
+          let div = parseInt(div_hex, 16);
+          cp_msg = cp_msg.substring(2);
+          let len_subasset_hex = cp_msg.substring(0,2);
+          let len_subasset = parseInt(len_subasset_hex, 16);
+          cp_msg = cp_msg.substring(2);
+          let subasset_hex = cp_msg.substring(0,len_subasset*2);
+          let subasset = hex_to_subasset(subasset_hex);
+          cp_msg = cp_msg.substring(len_subasset*2);
+          let descr_hex = cp_msg;
+          let descr = hex2a(descr_hex);
+          //descr = unescape(encodeURIComponent(descr));
+          descr = decodeURIComponent(escape(descr));
+          if (recipient != '0') {
+            out += wl('Transfer To', recipient);
+            out += wl('Dust (sat)', first_send_sat);
+            out += wl('Dust (btc)', (first_send_sat/100000000).toFixed(8));
+          }
+          out += wl('Asset (hex)', asset_hex);
+          out += wl('Asset (int)', asset);
+          out += wl('Asset', asset_name(asset));
+          out += wl('Issue Amount (hex)', q_hex);
+          out += wl('Issue Amount (sat)', q);
+          out += wl('Divisible (hex)', div_hex);
+          out += wl('Subasset len (hex)', len_subasset_hex);
+          //out += wl('Subasset len', len_subasset);
+          out += wl('Subasset (hex)', subasset_hex);
+          out += wl('Subasset', subasset);
+          out += wl('Description (hex)', descr_hex);
+          out += wl('Description', descr);
+        }
+
         if (id == 20 && block_height >= 753500) { //Issuance, post change 2022
           let asset_hex = cp_msg.substring(0,16);
           let asset = parseInt(asset_hex, 16);
