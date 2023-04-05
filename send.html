@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>Send Counterparty Token w/ Electrum</title>
+    <link rel="stylesheet" href="css/main.css">
+
+    <script src="db/asset_longnames.js"></script>
+    <script src="db/assets_div.js"></script>
+    <script src="db/assets_indiv.js"></script>
+
+    <script src="js/xcp/hex.js"></script>
+    <script src="js/xcp/assets.js"></script>
+    <script src="js/xcp/build_tx_msg.js"></script>
+    <script src="js/xcp/decode_tx_msg.js"></script>
+    <script src="js/xcp/display.js"></script>
+    <script src="js/xcp/rc4.js"></script>
+    <script src="js/xcp/validate_address.js"></script>
+
+    <script src="js/lib/bitcoinjs-lib.js"></script>
+    <script src="js/lib/bitcoinjs-message.js"></script>
+    <script src="js/lib/jquery-3.4.1.min.js"></script>
+    <script src="js/lib/lozad.min.js"></script>
+    <script src="js/lib/sha256.js"></script>
+    <script src="js/lib/btc.js"></script>
+
+    <script>
+      let addr = '';
+      let asset = '';
+      let longname = '';
+      let utxo = '';
+      let div = '';
+      let max = '';
+      function get_url_parameters() {
+        //Get url parameter 'address'
+        const queryString = window.location.search;
+        const urlParams = new URLSearchParams(queryString);
+        if (urlParams.has('addr')) {
+          addr = urlParams.get('addr');
+        }
+        if (urlParams.has('asset')) {
+          asset = urlParams.get('asset');
+          document.getElementById('input_asset').value = asset;  
+        }
+        if (urlParams.has('longname')) {
+          longname = urlParams.get('longname');
+        }
+        if (urlParams.has('utxo')) {
+          utxo = urlParams.get('utxo');
+          document.getElementById('input_utxo').value = utxo;
+          document.getElementById('div_utxo').style.display = 'none';
+        }
+        if (urlParams.has('div')) {
+          div = urlParams.get('div');
+          if (div == 'div') {
+            document.getElementById('input_divisibility').selectedIndex = 1;
+            document.getElementById('div_divisibility').style.display = 'none';
+          }
+          if (div == 'indiv') {
+            document.getElementById('input_divisibility').selectedIndex = 2;
+            document.getElementById('div_divisibility').style.display = 'none';
+          }
+        }
+        if (urlParams.has('max') && urlParams.has('div')) {
+          max = urlParams.get('max');
+        }
+      }
+
+      function display() {
+        let header = wallet_header;
+        header = header.replace('{address}', addr_short(addr));
+        if (utxo != '') {
+          header = header.replace('{utxo}', '<span onclick="document.getElementById(\'div_utxo\').style.display=\'block\';"> / '+utxo.slice(0,4)+'</span>');
+        } else{
+          header =header.replace('{utxo}', '');
+        }
+        document.getElementById('html_top').innerHTML = header;
+        show_alt_name();
+
+      }
+
+      function show_alt_name() {
+        document.getElementById('alt_name').innerHTML = alt_name(document.getElementById('input_asset').value);
+        show_max_amount();
+      }
+
+      function show_divisibility() {
+        let current_asset = document.getElementById('input_asset').value;
+        let div = get_divisibility(current_asset);
+        if (div == 'unknown') {
+          document.getElementById('input_divisibility').value = 'select';
+          document.getElementById('div_divisibility').style.display = 'block';
+        }
+        if (div == 'div') {
+          document.getElementById('input_divisibility').value = 'div';
+          document.getElementById('div_divisibility').style.display = 'none';
+        }
+        if (div == 'indiv') {
+          document.getElementById('input_divisibility').value = 'indiv';
+          document.getElementById('div_divisibility').style.display = 'none';
+        }
+      }
+
+      function show_max_amount() {
+        let max_message = '';
+        let show_max = true;
+        if (max == '') show_max = false;
+        if (asset != document.getElementById('input_asset').value) show_max = false;
+        if (div != 'div' && div != 'indiv') show_max = false;
+        if (show_max) max_message = 'Max ' + sat_to_displayx(max, div, '');
+        document.getElementById('max_amount').innerHTML = max_message;
+      }
+
+
+      function prepare_inputs() {
+        let inp_utxo = document.getElementById('input_utxo').value;            //eg a1870614c4cd1b3e20f98316f062c8622313eca4bbeb3f7bb695a61c164a45e7
+        let inp_asset = document.getElementById('input_asset').value;          //eg FLDC
+        let inp_amount = document.getElementById('input_amount').value;        //eg 5843.57
+        let inp_divisibility = document.getElementById('input_divisibility').value; //'div' or 'indiv'
+        let inp_recipient = document.getElementById('input_recipient').value;  //eg bc1qqqj54caf4cusvycr4dmzv24pgh875xeg8d5wrq
+        let inp_tip_btc = document.getElementById('input_tip').value;
+
+        //Inputs formatted ok?
+        inp_utxo = inp_utxo.substring(0,64);
+        inp_utxo = inp_utxo.toLowerCase();
+        if (inp_utxo.length != 64) {
+          print_result("UTXO is not valid"); return;
+        }
+        if (valid_name(inp_asset) == false) {
+          print_result("Asset name is not valid"); return;
+        }
+        if (isNaN(inp_amount)) {
+          print_result("Amount is not a number"); return;
+        }
+        if (valid_btc_addr(inp_recipient) == false) {
+          print_result("Recipient is not a valid Bitcoin address"); return;
+        }
+        if (valid_xcp_addr(inp_recipient) == false) {
+          print_result("Recipient's address is not supported by Counterparty"); return;
+        }
+        if (isNaN(inp_tip_btc)) {
+          print_result("Tip is not a number"); return;
+        }
+
+        let out = ' ';
+
+        //Check divisibility 
+        let div = get_divisibility(inp_asset);
+        if (div == 'unknown') {
+          out += 'Warning: Confirm that divisibility is correct on {xchain} and {xcpdev}.'
+        } else if (div != inp_divisibility) {
+          print_result("Wrong divisibility"); return;
+        }
+
+        //Convert longname. If not possible return error.
+        if (inp_asset.includes('.')) {
+          inp_asset = longname_to_asset(inp_asset);   
+          if (inp_asset == '') {
+            out += "Please input subasset's numeric name. See {xchain} and {xcpdev}."; 
+          }
+        }
+        out += 'Make sure the first input coin is ' + addr_short(inp_utxo, 3, 2);
+
+        let amount_sat = display_to_sat(inp_amount, inp_divisibility);
+        let opreturn_unencoded = msg_enhanced_send(inp_recipient, inp_asset, amount_sat);
+        let opreturn = rc4_hex(inp_utxo, opreturn_unencoded);
+        console.log(opreturn);
+
+        //Sanity checks. Does decoded tx match inputs?
+        let info = decode_tx(opreturn, inp_utxo);
+        if (info.prefix != 'CNTRPRTY') {
+          print_result("Op_return encoding error. Wrong prefix."); return;
+        }
+        if (info.type != 2) {
+          print_result("Op_return encoding error. Wrong messge type."); return;
+        }
+        if (info.prefix != 'CNTRPRTY') {
+          print_result("Op_return encoding error. Wrong prefix."); return;
+        }
+        if (info.asset_id != asset_id(inp_asset)) {
+          print_result("Op_return encoding error. Wrong asset id."); return;
+        }
+        if (Number(info.amount) != Number(amount_sat)) {
+          print_result("Op_return encoding error. Wrong amount."); return;
+        }
+        if (info.address != inp_recipient) {
+          print_result("Op_return encoding error. Wrong recipient address."); return;
+        }
+
+
+        //Output messages and code
+        let code = 'OP_RETURN ' + opreturn + ',0' + tip_line(inp_tip_btc);
+
+        let url_xchain = 'https://xchain.io/asset/' + inp_asset
+        let url_xcpdev = 'https://www.xcp.dev/asset/' + inp_asset
+        out = out.replaceAll('{xchain}', '<a href="' + url_xchain + '">Xchain</a>');
+        out = out.replaceAll('{xcpdev}', '<a href="' + url_xcpdev + '">Xcp.dev</a>');
+
+        print_result(out, code)
+
+      }
+
+
+      function print_result(message = '', code = '') {
+        document.getElementById('text_output').innerHTML = '<br>' + message;
+        document.getElementById('code_output').innerHTML = code;
+      }
+
+    </script>
+
+  </head>
+
+  <body onload="get_url_parameters();display();">
+    <div id="content">
+      <div id="html_top"></div>
+      <h1>Send Token</h1>
+      <div id="div_utxo">UTXO (Input Coin)<br>
+        <input id="input_utxo"><br><br></div>
+      <div id="div_asset">Asset<span id="alt_name" style="float:right"></span><br>
+        <input id="input_asset" oninput="show_alt_name();" onchange="show_divisibility();"><br><br></div>
+      <div id="div_amount">Amount<span id="max_amount" style="float:right">Max</span><br>
+        <input id="input_amount"><br><br></div>
+      <div id="div_divisibility">Divisible<br>
+        <select name="select_divisibility" id="input_divisibility">
+          <option value="select">Select</option>
+          <option value="div">True (Fractional tokens)</option>
+          <option value="indiv">False (Whole tokens)</option>
+        </select><br><br></div>
+      <div id="div_recipient">Recipient Address<br>
+        <input id="input_recipient"><br><br></div>
+      <div id="div_tip">Optional Tip to Developer (BTC)<span id="suggested_tip" style="float:right" onclick="document.getElementById('input_tip').value='0.0001';">Suggested: 0.0001</span><br>
+        <input id="input_tip"><br></div>
+      <button type="button" id="generate" onclick="prepare_inputs();" >Generate OP_RETURN</button><br><br>
+      <i><span style="font-size:75%">This is an experimental script. Peer review pending. Your tokens may get lost. Use at own risk!</span></i><br>
+      <span id="text_output">&nbsp;</span>
+      <textarea id="code_output" rows="2"></textarea>
+      <button type="button" id="copy" onclick="document.getElementById('code_output').select();document.execCommand('copy');">Copy</button><br><br>
+
+    </div> 
+  </body>
+  <script>
+    document.getElementById('input_tip').value = tip_btc;
+  </script>
+
+</html>

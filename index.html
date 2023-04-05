@@ -2,326 +2,340 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8">
-    <title>Send Counterparty Asset w/ Electrum</title>
+    <title>XCP Opreturn Builder for Electrum</title>
+    <link rel="stylesheet" href="css/main.css">
 
-    <script src="js/lib/biginteger.js" async></script>
-    <script src="js/xcp-js/util.js" defer></script>
-    <script src="js/xcp-js/transactions.js" defer></script>
-    <script src="js/lib/idle.js"></script>
-    <script src="js/lib/lozad.min.js"></script>
+    <script src="db/asset_longnames.js"></script>
+    <script src="db/assets_div.js"></script>
+    <script src="db/assets_indiv.js"></script>
+
+    <script src="js/xcp/hex.js"></script>
+    <script src="js/xcp/assets.js"></script>
+    <script src="js/xcp/build_tx_msg.js"></script>
+    <script src="js/xcp/decode_tx_msg.js"></script>
+    <script src="js/xcp/display.js"></script>
+    <script src="js/xcp/rc4.js"></script>
+    <script src="js/xcp/validate_address.js"></script>
+    
     <script src="js/lib/bitcoinjs-lib.js"></script>
     <script src="js/lib/bitcoinjs-message.js"></script>
-    <script src="js/btc.js"></script>
+    <script src="js/lib/jquery-3.4.1.min.js"></script>
+    <script src="js/lib/lozad.min.js"></script>
+    <script src="js/lib/sha256.js"></script>
+    <script src="js/lib/btc.js"></script>
 
     <script>
-      let tip_btc = '0.0001';
-      let tip_address = 'bc1qg8vldv8kk4mqafs87z2yv0xpq4wr4csucr3cj7';
+      /* testing:
+        1AwS3wRFNCoymKs69BXjAA4VfgWvuKvx4j  too many balances to show all
+      */
 
-      function prepare_inputs() {
-        let utxo = document.getElementById('input_utxo').value;            //eg a1870614c4cd1b3e20f98316f062c8622313eca4bbeb3f7bb695a61c164a45e7
-        let asset = document.getElementById('input_asset').value;          //eg FLDC
-        let amount = document.getElementById('input_amount').value;        //eg 5843.57
-        let recipient = document.getElementById('input_recipient').value;  //eg bc1qqqj54caf4cusvycr4dmzv24pgh875xeg8d5wrq
-        tip_btc = document.getElementById('input_tip').value;
-
-        utxo = utxo.substring(0,64);
-        if (utxo.length != 64) {
-          print_result("UTXO is not valid"); return;
-        }
-        if (isNaN(amount)) {
-          print_result("Amount is not a number"); return;
-        }
-
-        prepare_tx(recipient, asset, amount, utxo);
+      const TO_RECEIVER = 0.00005420; //BTC dust sent along asset
+      const forms = [
+        ['Send', 'send.html'],
+        ['Asset Transfer', 'asset_transfer.html'],
+        ['Sweep', 'sweep.html'],
+        ['Broadcast', 'broadcast.html']
+      ];
+      for (let i = 0; i < forms.length; i++) {
+        forms[i].push('<a href="'+forms[i][1]+'{params}">'+forms[i][0]+'</a>'); 
       }
 
-      function prepare_tx(address, asset_name, amount, utxo) {
-        console.log("Asset name:   " + asset_name);
+      let address = '';
+      let num_balances = 0;
+      let balances = [];
+      let num_ownerships = 0;
+      let ownerships = [];
+      let utxos = [];
 
-        print_result("Loading...");
-        //wait for api to return asset info
-        const api_res = fetch("https://xchain.io/api/asset/"+asset_name)
-        //.then((response) => response.json())
-        .then((response) => response.text())
-        .then((user) => {
-          return user;
+
+      function prepare() {
+        //Get url parameter 'address'
+        const queryString = window.location.search;
+        const urlParams = new URLSearchParams(queryString);
+        if (urlParams.has('address') == false) {
+          let forms_html = '';
+          for (let i = 0; i < forms.length; i++) {
+            forms_html += '<br>&bull; '+forms[i][2].replace('{params}',''); 
+          }
+          document.getElementById('content').innerHTML = 'No address provided.<br><br>Append address as url parameter,<br>eg <i>index.html?address=1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa</i><br><br>... or use a blank form:'+forms_html;
+          return;
+        }
+        address = urlParams.get('address');
+        if (valid_btc_addr(address) == false) {
+          document.getElementById('content').innerHTML = 'The provided address `'+address+'` is not a valid Bitcoin address.';
+          return;
+        }
+        if (valid_xcp_addr(address) == false) {
+          document.getElementById('content').innerHTML = 'The provided address `'+address+'` is not supported by Counterparty.';
+          return;
+        }
+        //All good, go ahead
+        get_api();
+      }
+
+
+      //API functions rely on 3rd party services
+      function get_api() {
+        //pushes values to three arrays:
+        // balances[] is an array where each balance is an object {asset, longname, displayname, quantity(sats), divisibility}
+        // ownerships[] is an array where each asset is an object {asset, longname, displayname, description, divisibility}
+        // utxos[] is an array of [id, sats]
+        //also assigns values to num_balances and num_ownerships (XCP counts as a balance, BTC does not)
+        //Notes: First call gives number of balances and ownerships to expect.
+        //       We only load the first page, so in case a very large number not all will show.
+        //       Id and quantity are strings to prevent > max_int issues.
+        //       Quantity is always satoshis. Converting to human readable requires divisibility ('div' or 'indiv').
+        //       Longname applies only to subassets, which both have a numeric name (Axxx) and longname (TOKEN.Sub).
+        //         All other assets have empty ('') longname.
+        //       For ownerships there's not one specific api call, so we use `issuances` to try
+        //       to get current ownerships. This fails to show ownerships that have been transferred to the address. 
+
+        $.getJSON( "https://xchain.io/api/address/" + address, function( data ) {
+          num_balances = data.assets.held;
+          num_ownerships = data.assets.owned;
+          //balances = [];
+          //balances.length = num_balances;
+          //ownerships = [];
+          //ownerships.length = num_ownerships;
+          console.log('Xchain api 1/4 loaded. Balances = ' + num_balances + '. Ownerships = ' + num_ownerships + '.');
+
+          $.getJSON( "https://xchain.io/api/balances/" + address, function( data ) {
+            //let xcp_balance = "0"; //error if address not used (assume any error means 0 XCP)
+            let i = -1;
+            $.each( data.data, function( key, val ) {
+              i += 1;
+              //let balance = {};
+              let quant = val.quantity;
+              let divisbility = '';
+              if (quant.includes('.')) { //divisible
+                divisbility = 'div';
+                //sanity check. Xchain always uses 8 decimals for divisible assets
+                if (quant.split('.')[1].length != 8) {
+                  throw new Error('API unexpected result. Expected 8 decimals.   https://xchain.io/api/balances/' + address);
+                }
+                quant = quant.replace('.','').replace(/^0+/, ''); //to get quant in sats .. 0.00042000 -> 42000
+              } else {
+                divisbility = 'indiv';
+              }
+              //Api returns name but not ID for regular assets (get from asset_id() function)
+              //            name and implicitly the ID for numeric assets
+              //            name (longname) and ID for subassets (id is wrong so use numeric name without A)
+              //Leave blank ID for regular assets
+              let asset_name = val.asset;
+              let asset_longname = val.asset_longname;
+              let asset_diplayname = asset_name;
+              if (asset_longname != '') {
+                asset_diplayname = asset_longname;
+              }
+              if (asset_name == 'XCP') {
+                num_balances += 1; 
+              }
+              //balance.name = asset_name;
+              //balance.longname = asset_longname;
+              //balance.divisbility = divisbility;
+              balances.push({asset: asset_name, longname: asset_longname, displayname: asset_diplayname, quantity: quant, divisibility: divisbility});
+            });
+            console.log('Xchain api 2/4 loaded. (' + balances.length + ' token balances)');
+
+            let issuances = [];  
+            $.getJSON( "https://xchain.io/api/issuances/" + address, function( data ) {
+              //issuances are soreted with newest first
+              // only care about last valid where new`issuer` is the same address 
+              $.each( data.data, function( key, val ) {
+                if (val.status == 'valid') {
+                  issuances.push([val.asset, val.asset_longname, val.issuer, val.divisible, val.description]);
+                }
+              });
+              i = -1;
+              for (let j = 0; j < issuances.length; j++) {
+                let asset_name = issuances[j][0];
+                let asset_longname = issuances[j][1];
+                let asset_diplayname = asset_name;
+                if (asset_longname != '') {
+                  asset_diplayname = asset_longname;
+                }
+                let description = issuances[j][4];
+                //ignore if this is not the last issuance (ie first in array)
+                let asset_count = 0;
+                for (let k = 0; k < j; k++) {
+                  if (issuances[k][0] == asset_name) asset_count += 1;
+                }
+                if (asset_count > 0) continue;
+                //ignore if asset was transferred to someone else
+                if (issuances[j][2] != address) continue;
+                //conclude address owns this asset
+                i += 1;
+                let divisbility = '';
+                if (issuances[j][3] == true) {
+                  divisbility = 'div';
+                } else {
+                  divisbility = 'indiv';
+                }
+                ownerships.push({asset: asset_name, longname: asset_longname, displayname: asset_diplayname, desciption: description, divisbility: divisbility});
+              }
+              console.log('Xchain api 3/4 loaded. (' + ownerships.length + ' asset ownerships)');
+              displayBalances();
+
+              //utxos =[];
+              $.getJSON( "https://xchain.io/api/utxos/" + address, function( data ) {
+                $.each( data.data, function( key, val ) {
+                  utxos.push({id: val.txid, quantity: val.value});
+                });
+                console.log('Xchin api 4/4 loaded. (' + utxos.length + ' UTXOs)');
+
+                displayBalances();
+              });
+            });
+          });
         });
+      }
 
-        const api_res2 = async () => {
-          let asset_info = await api_res;
 
-          //sometimes asset_id > max_safe_integer
-          //converting to string solves the problem
-          asset_info = asset_info.replace(/("[^"]*"\s*:\s*)(\d{16,})/g, '$1"$2"');
-          asset_info = JSON.parse(asset_info);
 
-          let div = asset_info.divisible;
-          let id = asset_info.asset_id;
-          if (asset_name[0] == "A") { //numeric asset
-            id = asset_info.asset.substr(1);
+      function displayBalances() {
+        let html = '';
+        let url_send = 'send.html?asset={asset}&longname={longname}&max={max}&div={div}&addr={addr}&utxo={utxo}';
+
+        //UTXOs
+        let utxo = '';
+        //utxos.sort((a, b) => parseFloat(a.id) - parseFloat(b.id));
+        utxos.sort((a, b) => a.id.localeCompare(b.id));
+        let btc_balance = 0;
+        for (let i = 0; i < utxos.length; i++) {
+          btc_balance += utxos[i].quantity;
+        }
+        if (utxos[0]) utxo = utxos[0].id;
+
+        //Display names
+        for (let i = 0; i < balances.length; i++) {
+          if (balances[i].longname == '') {
+            balances[i].displayname = balances[i].asset;
+          } else {
+            balances[i].displayname = balances[i].longname;
           }
-          if (asset_name.includes(".")) { //subasset
-            id = asset_info.asset.substr(1);
-          }
+        }
 
-          //sanity check. api returns correct asset name?
-          if (asset_name != asset_info.asset && asset_name != asset_info.asset_longname) {
-            print_result("Api sanity check failed"); return;
-          }
-          //sanity check for asset id
-          if (asset_name[0] == "A") { //numeric asset
-            if (id != asset_name.substr(1) && id != "9223372036854775807") {
-              print_result("Api sanity check failed"); return;
-            } 
-          } else if (asset_name.includes(".")) { //subasset
-            //no sanity check possible
-          } else { //regular asset
-            if (BigInt(id).toString(16) != assetid(asset_name)) {
-              print_result("Api sanity check failed"); return;
+        //Send links
+        let xcp_balance = 0;
+        let send_link_xcp = '';
+        let send_links = [];
+        for (let i = 0; i < balances.length; i++) {
+          if (balances[i].quantity == 0) {
+            send_links.push(''); 
+          } else {
+            let send_link = url_send;
+            send_link = send_link.replace('{asset}', balances[i].asset);
+            send_link = send_link.replace('{longname}', balances[i].longname);
+            send_link = send_link.replace('{max}', balances[i].quantity);
+            send_link = send_link.replace('{div}', balances[i].divisibility);
+            send_link = send_link.replace('{addr}', address);
+            send_link = send_link.replace('{utxo}', utxo);
+            send_links.push('<a href="'+send_link+'">Send</a>');
+            if (balances[i].asset == 'XCP') {
+              xcp_balance = balances[i].quantity;
+              send_link_xcp = '<a href="'+send_link+'">Send</a>';
             }
           }
+        }
 
-          console.log("Divisible:    " + div);
-          if (div == 1 || div == true || div == "true") {
-            hex_opreturn_send(address, id, amount, utxo, "true"); 
-          } else if (div == 0 || div == false || div == "false") {
-            hex_opreturn_send(address, id, amount, utxo, "false")
-          } else { 
-            print_result("Api error"); return;
+        //Header
+        html += '<h1>'+address+'</h1>';
+        html += '<p>Token balances and ownerships.<p>';
+        let header = wallet_header
+        header = header.replace('{address}', addr_short(address));
+        if (utxo == '') {
+          header = header.replace('{utxo}', '');  
+        } else { 
+          header = header.replace('{utxo}', 'UTXO ' +utxo.slice(0, 4));
+        }
+
+
+        //Token balances
+        html += '<table>';
+        html += '<colgroup><col style="width:30%"><col style="width:40%"><col style="width:30%"></colgroup>';
+        html += '<tr><th>Tokens</th><th></th><th></th></tr>';
+        html += '<tr><td>BTC</td><td class="cell_right">'+balance_format(btc_balance, 'div')+'</td><td></td></tr>';
+        html += '<tr><td>XCP</td><td class="cell_right">'+balance_format(xcp_balance, 'div')+'</td><td class="cell_right">'+send_link_xcp+'</td></tr>';
+        for (let i = 0; i < balances.length; i++) {
+          if (balances[i].asset != 'XCP') {
+            html += '<tr><td>'+balances[i].displayname+'</td><td class="cell_right">'+sat_to_displayx(balances[i].quantity, balances[i].divisibility)+'</td><td class="cell_right">'+send_links[i]+'</td></tr>';          
           }
-        };
-        api_res2();
-      }
-
-      //https://github.com/geco/bech32-js/blob/master/bech32-js.min.js 
-      //checkbech32(address) returns 'OK' or 'KO' 
-      for(var ALPHABET="qpzry9x8gf2tvdw0s3jn54khce6mua7l",ALPHABET_MAP={},z=0;z<ALPHABET.length;z++){var x=ALPHABET.charAt(z);ALPHABET_MAP[x]=z}function polymodStep(r){var e=r>>25;return(33554431&r)<<5^996825010&-(e>>0&1)^642813549&-(e>>1&1)^513874426&-(e>>2&1)^1027748829&-(e>>3&1)^705979059&-(e>>4&1)}function prefixChk(r){for(var e=1,t=0;t<r.length;++t){var n=r.charCodeAt(t);if(n<33||126<n)return"KO";e=polymodStep(e)^n>>5}for(e=polymodStep(e),t=0;t<r.length;++t){var o=r.charCodeAt(t);e=polymodStep(e)^31&o}return e}function checkbech32(r){if(r.length<8)return"KO";if(90<r.length)return"KO";var e=r.lastIndexOf("1");if(-1===e)return"KO";if(0===e)return"KO";var t=r.slice(0,e),n=r.slice(e+1);if(n.length<6)return"KO";var o=prefixChk(t);if("string"==typeof o)return"KO";for(var f=[],A=0;A<n.length;++A){var h=n.charAt(A),a=ALPHABET_MAP[h];if(void 0===a)return"KO";o=polymodStep(o)^a,A+6>=n.length||f.push(a)}return 1!==o?"KO":"OK"}
-
-      function hex_opreturn_send(address, asset_id, amount, utxo, divisible) {
-
-        var prefix = "434e54525052545902"; //CNTRPRTY + 02 (single byte message id)
-
-        let address_hex = '';
-        if (address[0] == "1") {
-          address_hex = '00' + toHexString(bitcoinjs.address.fromBase58Check(address).hash);
-        } else if (address[0] == "3") {
-          address_hex = '05' + toHexString(bitcoinjs.address.fromBase58Check(address).hash);
-        } else if (address.toLowerCase().substr(0,4) == "bc1q" && address.length == 42 && checkbech32(address) == 'OK') {
-          address_hex = '80' + bech32toHex(address);
+        }
+        if (balances.length == num_balances + 1 && xcp_balance > 0) {
+          html += '<tr><td colspan="3"><i>'+(num_balances+1)+' token balances</i></td></tr>';
+        } else if (balances.length == num_balances) {
+          html += '<tr><td colspan="3"><i>'+num_balances+' token balances</i></td></tr>';
         } else {
-          print_result("Wrong address"); return;
+          html += '<tr><td colspan="3"><i>Only '+balances.length+' of '+num_balances+' tokens displayed due to api limitations.</i></td></tr>';  
         }
+        html += '</table>';
 
-        var asset_id_hex = padprefix(BigInt(asset_id).toString(16), 16);
-
-        var amount_round = 0;
-        if (divisible == "true") {
-          if (amount > 90000000) { //potential precision bug
-            print_result("Amounts over 90,000,000 not supported"); return;
-          }
-          amount_round = parseInt((amount*100000000).toFixed(0));
-        } else if (divisible == "false") {
-          amount_round = parseInt(amount);
+        //Asset ownerships
+        html += '<table>';
+        html += '<colgroup><col style="width:30%"><col style="width:40%"><col style="width:30%"></colgroup>';
+        html += '<tr><th>Asset Ownerships</th><th></th><th></th></tr>';
+        for (let i = 0; i < ownerships.length; i++) {
+          html += '<tr><td>'+ownerships[i].displayname+'</td><td>'+ownerships[i].desciption+'</td><td class="cell_right">EDIT  TRANSFER</td></tr>';          
+        }
+        if (ownerships.length == num_ownerships) {
+          html += '<tr><td colspan="3"><i>'+num_ownerships+' asset ownerships</i></td></tr>';
         } else {
-          print_result("Divisibility unknown: " + divisible); return;
+          html += '<tr><td colspan="3"><i>Only '+ownerships.length+' of '+num_ownerships+' asset ownerships displayed due to api limitations.</i></td></tr>';  
         }
-        var amount_hex = padprefix((amount_round).toString(16), 16);
+        html += '</table>';
 
-        var data = prefix + asset_id_hex + amount_hex + address_hex;
+        //Input coin (utxo)
+        html += '<table>';
+        html += '<tr><th>Input Coin (UTXO)</th></tr>';
+        if (utxo != '') {
+          html += '<tr><td>'+utxo+'</td></tr>';
+        } else {
+          html += '<tr><td>N/A</td></tr>';
+        }
+        html += '</table>';
 
-        var datachunk_encoded = xcp_rc4(utxo, data);
 
-        console.log("Asset id:     " + asset_id);
-        console.log("Asset id hex: " + asset_id_hex);
-        console.log("Amount:       " + amount);
-        console.log("Amount round: " + amount_round);
-        console.log("Amount hex:   " + amount_hex);
-        console.log("Address:      " + address);
-        console.log("Address hex:  " + address_hex);
-        console.log("UTXO:         " + utxo);
-        console.log("Data:         " + data);
-        console.log("Encoded       " + datachunk_encoded);
+        //List of forms
+        let params = '?address='+address;
+        html += '<table>';
+        html += '<tr><th>Address Actions</th></tr>';
+        for (let i = 0; i < forms.length; i++)  {
+          html += '<tr><td>&bull; '+forms[i][2].replaceAll('{params}',params)+'</td></tr>';
+        }
+        html += '</table>';
 
-        print_result("OP_RETURN " + datachunk_encoded + ",0" + tip_line());
-        document.getElementById("copy").disabled = false;
+        //console.log(html);
+        document.getElementById('content').innerHTML = header + html + wallet_footer;
       }
 
-      function print_result(data) {
-        document.getElementById('code_output').value = data;
-      }
-
-      function tip_line() {
-        if (Number(tip_btc) == 0) {
-          return "";
+      function balance_format(quant, div) {
+        //input quant in satoshis and 'div' or 'indiv'
+        let n = '';
+        if (div == 'indiv') {
+          n = Number(quant).toLocaleString("en-US");
+          n += '         '; // 9 spaces    
         }
-        return "\n" + tip_address + "," + tip_btc;
-      }
-
-      function bech32toHex(address) { //https://en.bitcoin.it/wiki/Bech32
-        const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
-        address = address.toLowerCase();
-
-        let data = [];
-        for (let p = 4; p < address.length; ++p) {
-          let d = CHARSET.indexOf(address.charAt(p));
-          if (d === -1) {
-            return null;
-          }
-          data.push(d);
+        if (div == 'div') {
+          n = String(quant).padStart(9, '0');
+          let fractional = n.slice(-8);
+          let whole = n.slice(0,-8);
+          whole = Number(whole).toLocaleString("en-US");
+          n = whole + '.' + fractional;
         }
-
-        let bin5 = [];
-        for (let i = 0; i <= 32; i++) {
-          //binary += data[i].toString(2).padStart(5, '0'); 
-          bin5.push(data[i].toString(2).padStart(5, '0'));
-        }
-
-        let binString = ''
-        for (let i = 0; i < bin5.length; i++) {
-          binString += bin5[i];
-        }
-
-        let bin8 = binString.match(/.{8}/g);
-
-        let hex = '';
-        for (let i = 0; i < bin8.length; i++) {
-          hex += parseInt(bin8[i], 2).toString(16).padStart(2, '0');
-        }
-        return hex;
+        return n;
       }
 
     </script>
-    <style>
-      html, body {
-        width: 100%;
-      }
-      #content {
-        font-family: Verdana, sans-serif;
-        max-width: 650px;
-        margin: auto;
-        text-align: left;
-      }
-      h2 {
-        margin-bottom: 2px;
-      }
-      input, textarea {
-        width: 100%;
-        padding: 4px 4px;
-        margin: 6px 0;
-        box-sizing: border-box;
-      }
-      button {
-        width: 30%;
-        padding: 4px 4px;
-        margin: 6px 0;
-      }
-      textarea {
-        font-size: 10px;
-      }
-    </style>
-
   </head>
-
-  <body onload="//prepare_tx('bc1qmgcswk0s8c0wqs2qk7s7u82f7tnmvnx9hmk84v', 'GEMZ', '0.00000002', 'c4b588eaf330de9cd3a319d2e9f7c78704c8b1fb9dd5057b42be8b6fc3ec140c');">
+  <body onload="prepare()">
     <div id="content">
-      <h2>Counterparty Send With Electrum</h2>
-      This form generates an OP_RETURN message for sending Counterparty tokens from the Electrum Bitcoin Wallet.<br><br>
-      UTXO (Output Point)<br>
-      <input id="input_utxo"><br><br>
-      Asset (Token) Name<br>
-      <input id="input_asset"><br><br>
-      Amount<br>
-      <input id="input_amount"><br><br>
-      Recipient Address<br>
-      <input id="input_recipient"><br><br>
-      Optional Tip to Developer (BTC)<br>
-      <input id="input_tip"><br>
-      <button type="button" id="generate" onclick="prepare_inputs();" >Generate OP_RETURN</button><br><br>
-      <i><span style="font-size:75%">This is an experimental script. Peer review pending. Your tokens may get lost. Use at own risk!</span></i><br>
-      <textarea id="code_output" rows="2"></textarea>
-      <button type="button" id="copy" disabled onclick="document.getElementById('code_output').select();document.execCommand('copy');">Copy</button><br><br>
+      <div id="output">
 
-      <h2>Instructions</h2>
-      1. Open Electrum<br>
-      2. Locate the address with your Counterparty tokens. If the btc balance is zero, top it up with enough btc to pay a miner fee.<br>
-      3. Find this address under the 'Coins' tab.<br>
-      4. Right click -> 'Spend'.<br>
-      5. Right click again -> Copy -> 'Output point'.<br>
-      6. Paste the UTXO (Output point) in this form.<br>
-      7. Enter asset, amount and recipient address.<br>
-      8. Include a tip if you like to support further development of this script.<br>
-      9. Click 'Generate OP_RETURN' and 'COPY' to clipboard.<br>
-      10. Open Electrum again.<br>
-      11. Click 'Send' tab.<br>
-      12. Paste into 'Pay to' field.<br>
-      13. Click 'Pay...'.<br>
-      14. Send as usual with Electrum. Make sure the fee is fine. Note the amount shall be the tip only. Electrum is not aware of Counterparty tokens.<br>
-
-      <h2>Recommended Settings</h2>
-      Optional but recommended. <br>
-      In Electrum, go to 'Preferences' -> 'Transactions':<br>
-      - Tick 'Advanced Preview'<br>
-      - Untick 'Use Change Address'<br>
-
-      <h2>Why This Script</h2>
-      I want to reduce the threshold for Bitcoin users to send tokens.<br>
-      Before this script, if you held tokens in Electrum, in order to send you had to export the private key to a Counterparty-aware wallet.<br>
-      Now your private key stays within Electrum.<br>
-
-      <h2>Risks by Using This Script</h2>
-      - Although your bitcoin private keys are entirely handled by Electrum, you must take care while making the transaction. Make sure the fee is fine, that the OP_RETURN btc amount is zero, and that any tip is reasonable.<br><br>
-      - The OP_RETURN contains all token send info and <b>is not</b> human readable nor does Electrum check it. This script does not check the asset and amount against your address either. If you input wrong values, you may lose your tokens or at the very least a bitcoin miner fee.<br><br>
-      - This script is pending peer review. Use at own risk!<br>
-
-      <h2>FAQ</h2>
-      <b>Which address formats are supported?</b><br>
-      - legacy, prefix '1' (p2pkh)<br>
-      - native segwit, prefix 'bc1q' and 42 char length (bech32, p2wpkh).<br>
-      - legacy multisig, prefix '3' (p2sh).<br>
-      - nested segwit, prefix '3', identical to p2sh (p2wsh-p2sh).<br><br>
-      <b>Which address formats are <i>not</i> supported?</b><br>
-      - multisig segwit, prefix 'bc1q' and 62 char length (bech32, p2wsh).<br><br>
-      <b>Show me examples</b><br>
-      Supported:<br>
-      <code>- 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa</code><br>
-      <code>- bc1qqqj54caf4cusvycr4dmzv24pgh875xeg8d5wrq</code><br>
-      <code>- 34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo</code><br>
-      Not supported:<br>
-      <code>- bc1qgdjqv0av3q56jvd82tkdjpy7gdp9ut8tlqmgrpmv24sq90ecnvqqjwvw97</code><br><br>      
-      <b>How to open a legacy multisig wallet?</b><br>
-      Electrum does not have this option anymore. However, there is a workaround.<br>
-      Begin by creating a new seed. Then go back and choose 'I already have a seed'. Enter the seed. You know it's correct when the text 'Seed type: segwit' appears. Now choose option 'BIP39 seed' and ignore the warnings. Then choose p2sh-segwit (legacy would also work but result in higher fees). Then continue the normal process.<br><br>
-      <b>My address has several UTXOs. Which one to use?</b><br>
-      It does not matter. Pick one of them.<br><br>
-      <b>Does this script work for other wallets than Electrum?</b><br>
-      Yes, as long as it allows sending OP_RETURN data. If your wallet doesn't show UTXOs you can find them on a block explorer.<br><br>
-      <b>Can I receive tokens to my Electrum wallet?</b><br>
-      Yes, unless you have a multisig segwit wallet. Just keep in mind that Electrum does not show token balances. Manually add a label to keep track of tokens and check the history on <a href="https://xchain.io">xchain.io</a>.<br><br>
-      <b>Can I buy from a dispenser through Electrum?</b><br>
-      Yes, a dispense is triggered by a standard Bitcoin transaction. Multisig segwit is the exception and will not work.<br>
-      Also keep in mind that Electrum will not confirm the tokens. Please view the status on xchain.io.<br><br>
-      <b>Can I issue tokens, place DEX orders, and do other Counterparty actions with Electrum?</b><br>
-      Not currently. But I can write similar scripts for almost all Counterparty transactions if there's any demand for it.<br><br>
+        <p>Loading..</p>
 
 
-      <h2>API Considerations</h2>
-      If the API is down, the script will fail. Please try again in a minute.<br><br>
-      A malicious API could not cause much harm.<br><br>
-      For regular assets the only risk is a wrong divisibility status, losing you a miner fee and potentially some token-satoshis.<br><br>
-      For subassets the asset ID could be false and theoretically cause you to send the wrong asset.<br><br>
-      I consider these risks minuscule but if you want you can check the values in console (CTRL+SHIFT+I).<br><br>
-      The API provider is Xchain.io which has served the community for years.
 
-      <h2>Credit</h2>
-      I used Loon3's <a href="https://github.com/loon3/Freeport-extension">Freeport Wallet</a> to build this script. All libraries are copied and unmodified. My code is within index.html only.<br><br>
-      API is provided by <a href="https://xchain.io">xchain.io</a>. 
-
-      <h2>License</h2>
-      MIT
-    </div> 
+      </div>
+    </div>
   </body>
-  <script>
-    document.getElementById('input_tip').value = tip_btc;
-  </script>
-
 </html>
