@@ -35,8 +35,8 @@
         //Get url parameter 'address'
         const queryString = window.location.search;
         const urlParams = new URLSearchParams(queryString);
-        if (urlParams.has('addr')) {
-          addr = urlParams.get('addr');
+        if (urlParams.has('address')) {
+          addr = urlParams.get('address');
         }
         if (urlParams.has('asset')) {
           asset = urlParams.get('asset');
@@ -70,7 +70,7 @@
         let header = wallet_header;
         header = header.replace('{address}', addr_short(addr));
         if (utxo != '') {
-          header = header.replace('{utxo}', '<span onclick="document.getElementById(\'div_utxo\').style.display=\'block\';"> / '+utxo.slice(0,4)+'</span>');
+          header = header.replace('{utxo}', '<span onclick="document.getElementById(\'div_utxo\').style.display=\'block\';">UTXO '+utxo.slice(0,4)+'</span>');
         } else{
           header =header.replace('{utxo}', '');
         }

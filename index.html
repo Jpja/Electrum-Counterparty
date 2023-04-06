@@ -16,7 +16,7 @@
     <script src="js/xcp/display.js"></script>
     <script src="js/xcp/rc4.js"></script>
     <script src="js/xcp/validate_address.js"></script>
-    
+
     <script src="js/lib/bitcoinjs-lib.js"></script>
     <script src="js/lib/bitcoinjs-message.js"></script>
     <script src="js/lib/jquery-3.4.1.min.js"></script>
@@ -53,11 +53,18 @@
         const queryString = window.location.search;
         const urlParams = new URLSearchParams(queryString);
         if (urlParams.has('address') == false) {
+          let header = wallet_header
+          header = header.replace('{address}', addr_short(address));
+          header = header.replace('{utxo}', '');  
+
           let forms_html = '';
           for (let i = 0; i < forms.length; i++) {
             forms_html += '<br>&bull; '+forms[i][2].replace('{params}',''); 
           }
-          document.getElementById('content').innerHTML = 'No address provided.<br><br>Append address as url parameter,<br>eg <i>index.html?address=1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa</i><br><br>... or use a blank form:'+forms_html;
+
+          let tip = '<div style="white-space:pre;">Tip: Set your address as url parameter to view token balances,<br>     e.g. <i>index.html?address=1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa</i></div>';
+
+          document.getElementById('content').innerHTML = header + '' + forms_html + '<br><br>' + tip;
           return;
         }
         address = urlParams.get('address');
@@ -194,7 +201,7 @@
 
       function displayBalances() {
         let html = '';
-        let url_send = 'send.html?asset={asset}&longname={longname}&max={max}&div={div}&addr={addr}&utxo={utxo}';
+        let url_send = 'send.html?asset={asset}&longname={longname}&max={max}&div={div}&address={addr}&utxo={utxo}';
 
         //UTXOs
         let utxo = '';
@@ -220,7 +227,7 @@
         let send_link_xcp = '';
         let send_links = [];
         for (let i = 0; i < balances.length; i++) {
-          if (balances[i].quantity == 0) {
+          if (balances[i].quantity == 0 || utxo == '') {
             send_links.push(''); 
           } else {
             let send_link = url_send;
@@ -296,7 +303,10 @@
 
 
         //List of forms
-        let params = '?address='+address;
+        let params = '?address=' + address;
+        if (utxo != '') {
+          params += '&utxo=' + utxo;
+        }
         html += '<table>';
         html += '<tr><th>Address Actions</th></tr>';
         for (let i = 0; i < forms.length; i++)  {
