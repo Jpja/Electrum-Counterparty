@@ -1,6 +1,6 @@
 /*Takes an op_return message (hex string) and returns an object with properties
 - prefix (shall be 'CNTRPRTY')
-- type (int, e.g 2 for enhanced send)
+- msg_id (int, e.g 2 for enhanced send)
 - amount (BigInt in satoshis)
 - amount_display ('err' if wallet doesn't know divisbility, else display format)
 - address (encoded in the message, typically recipient)
@@ -8,11 +8,15 @@
 - asset_id (BigInt)
 - asset_display (same as 'asset' except longaname if available)
 Not all tx types have all properties
-UTXO is optional. If ommitted it's assumed the msg is unencoded.
+UTXO is optional. Omit if msg is unencoded.
 */
 
 function decode_tx(msg, utxo = '') {
   let info = {};
+  let asset_id_hex = '';
+  let amount_hex = '';
+  let addr_hex = '';
+
   if (utxo != '') msg = rc4_hex(utxo, msg);
 
   //CNTRPRTY prefix
@@ -20,40 +24,51 @@ function decode_tx(msg, utxo = '') {
   info['prefix'] = prefix;
   msg = msg.slice(16);
 
-  //Type 
-  let type = parseInt(msg.slice(0,2), 16);
-  info['type'] = type;
-  msg = msg.slice(2);
+  //Message ID 
+  let msg_id_hex = msg.slice(0,2);
+  if (msg_id_hex == '00') {
+    msg_id_hex = msg.slice(0,8);
+    msg = msg.slice(8);
+  } else {
+    msg = msg.slice(2);
+  }
+  let msg_id = parseInt(msg_id_hex, 16);
+  info['msg_id'] = msg_id;
+
+  
+  //Extract data specific for Message ID
+  if (msg_id == 2) { //Enhanced send
+    asset_id_hex = msg.slice(0,16);
+    msg = msg.slice(16);
+    amount_hex = msg.slice(0,16);
+    msg = msg.slice(16);
+    addr_hex = msg.slice(0,42);
+  }
 
 
-  if (type == 2) { //Enhanced send
-    let asset_id_hex = msg.slice(0,16);
+  //Logical values derived from message and locally saved tables
+  if (asset_id_hex != '') {
     let asset_id = BigInt('0x'+asset_id_hex).toString(10);
     let asset = asset_name(asset_id);
-    info['asset'] = asset;
     info['asset_id'] = asset_id;
+    info['asset'] = asset;
     info['asset_display'] = asset_name(asset_id, true);
-    msg = msg.slice(16);
-    let amount_hex = msg.slice(0,16);
-    console.log(amount_hex);
+  }
+
+  if (amount_hex != '') {
     let amount = BigInt('0x'+amount_hex).toString(10);
     let div = get_divisibility(asset);
     info['amount'] = amount;
     info['amount_display'] = sat_to_display(amount, div);
-    msg = msg.slice(16);
-    let addr_hex = msg.slice(0,42);
-    info['address'] = hex_to_address(addr_hex);
-
-
   }
 
+  if (addr_hex != '') {
+    info['address'] = hex_to_address(addr_hex);
+  }
 
-
-
-
-  info['status'] = 'ok';
   return info;
 }
+
 
 
 
