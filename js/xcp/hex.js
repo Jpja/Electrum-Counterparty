@@ -16,6 +16,16 @@ function ascii_to_hex(str) {
   return arr1.join('');
 }
 
+function utf8_to_hex(str) {
+  const encoder = new TextEncoder('UTF-8');
+  let bytes = encoder.encode(str);
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, '0');
+  }
+  return hex;
+}
+
 function hex2aq(hexx) {
   var hex = hexx.toString();//force conversion
   var str = '';
@@ -28,6 +38,14 @@ function hex2aq(hexx) {
     }
   }
   return str;
+}
+
+function hex_to_utf8(s)
+{
+  return decodeURIComponent(
+     s.replace(/\s+/g, '') // remove spaces
+      .replace(/[0-9a-f]{2}/g, '%$&') // add '%' before each 2 characters
+  );
 }
 
 function xcp_rc4(key, datachunk) {

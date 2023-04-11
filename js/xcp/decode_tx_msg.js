@@ -1,13 +1,16 @@
 /*Takes an op_return message (hex string) and returns an object with properties
 - prefix (shall be 'CNTRPRTY')
 - msg_id (int, e.g 2 for enhanced send)
+
+In addition, when relevant for specific message ID:
 - amount (BigInt in satoshis)
 - amount_display ('err' if wallet doesn't know divisbility, else display format)
 - address (encoded in the message, typically recipient)
 - asset (name, for subassets this is the numeric name)
 - asset_id (BigInt)
 - asset_display (same as 'asset' except longaname if available)
-Not all tx types have all properties
+- text (broadcast, issuance description)
+
 UTXO is optional. Omit if msg is unencoded.
 */
 
@@ -16,6 +19,7 @@ function decode_tx(msg, utxo = '') {
   let asset_id_hex = '';
   let amount_hex = '';
   let addr_hex = '';
+  let text_hex = '';
 
   if (utxo != '') msg = rc4_hex(utxo, msg);
 
@@ -35,7 +39,7 @@ function decode_tx(msg, utxo = '') {
   let msg_id = parseInt(msg_id_hex, 16);
   info['msg_id'] = msg_id;
 
-  
+
   //Extract data specific for Message ID
   if (msg_id == 2) { //Enhanced send
     asset_id_hex = msg.slice(0,16);
@@ -44,9 +48,22 @@ function decode_tx(msg, utxo = '') {
     msg = msg.slice(16);
     addr_hex = msg.slice(0,42);
   }
+  
+  if (msg_id == 30) { //Broadcast
+    let ts_hex = msg.slice(0,8);
+    msg = msg.slice(8);
+    let value_hex = msg.slice(0,16);
+    msg = msg.slice(16);
+    let fee_hex = msg.slice(0,8);
+    msg = msg.slice(8);
+    let len_hex  = msg.slice(0,2);
+    let len = parseInt(len_hex);
+    msg = msg.slice(2);
+    text_hex = msg.slice(0,len*2);
+  }
 
 
-  //Logical values derived from message and locally saved tables
+  //Add properites to info object
   if (asset_id_hex != '') {
     let asset_id = BigInt('0x'+asset_id_hex).toString(10);
     let asset = asset_name(asset_id);
@@ -64,6 +81,10 @@ function decode_tx(msg, utxo = '') {
 
   if (addr_hex != '') {
     info['address'] = hex_to_address(addr_hex);
+  }
+  
+  if (text_hex != '') {
+    info['text'] = hex_to_utf8(text_hex);
   }
 
   return info;

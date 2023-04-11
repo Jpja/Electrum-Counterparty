@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>Broadcast Text w/ Electrum</title>
+    <link rel="stylesheet" href="css/main.css">
+
+    <script src="db/asset_longnames.js"></script>
+    <script src="db/assets_div.js"></script>
+    <script src="db/assets_indiv.js"></script>
+
+    <script src="js/xcp/hex.js"></script>
+    <script src="js/xcp/assets.js"></script>
+    <script src="js/xcp/build_tx_msg.js"></script>
+    <script src="js/xcp/decode_tx_msg.js"></script>
+    <script src="js/xcp/display.js"></script>
+    <script src="js/xcp/rc4.js"></script>
+    <script src="js/xcp/validate_address.js"></script>
+
+    <script src="js/lib/bitcoinjs-lib.js"></script>
+    <script src="js/lib/bitcoinjs-message.js"></script>
+    <script src="js/lib/jquery-3.4.1.min.js"></script>
+    <script src="js/lib/lozad.min.js"></script>
+    <script src="js/lib/sha256.js"></script>
+    <script src="js/lib/btc.js"></script>
+
+    <script>
+      let addr = '';
+      let asset = '';
+      let longname = '';
+      let utxo = '';
+      let div = '';
+      let max = '';
+      function get_url_parameters() {
+        //Get url parameter 'address'
+        const queryString = window.location.search;
+        const urlParams = new URLSearchParams(queryString);
+        if (urlParams.has('address')) {
+          addr = urlParams.get('address');
+        }
+        if (urlParams.has('utxo')) {
+          utxo = urlParams.get('utxo');
+          document.getElementById('input_utxo').value = utxo;
+          document.getElementById('div_utxo').style.display = 'none';
+        }
+      }
+
+      function display() {
+        let header = wallet_header;
+        header = header.replace('{address}', addr_short(addr));
+        if (utxo != '') {
+          header = header.replace('{utxo}', '<span onclick="document.getElementById(\'div_utxo\').style.display=\'block\';">UTXO '+utxo.slice(0,4)+'</span>');
+        } else{
+          header =header.replace('{utxo}', '');
+        }
+        document.getElementById('html_top').innerHTML = header;
+      }
+
+      function show_counter() {
+        let text = document.getElementById('input_text').value;
+        let hex = utf8_to_hex(text);
+        let counter = hex.length/2 + '/54';
+        document.getElementById('count_chars').innerHTML = counter;
+      }
+
+
+      function prepare_inputs() {
+        let inp_utxo = document.getElementById('input_utxo').value;            //eg a1870614c4cd1b3e20f98316f062c8622313eca4bbeb3f7bb695a61c164a45e7
+        let inp_text = document.getElementById('input_text').value;  //eg bc1qqqj54caf4cusvycr4dmzv24pgh875xeg8d5wrq
+        let inp_tip_btc = document.getElementById('input_tip').value;
+
+        //Inputs formatted ok?
+        inp_utxo = inp_utxo.substring(0,64);
+        inp_utxo = inp_utxo.toLowerCase();
+        if (inp_utxo.length != 64) {
+          print_result("UTXO is not valid"); return;
+        }
+        let inp_len = utf8_to_hex(inp_text).length / 2;
+        if (inp_len > 54) {
+          print_result("Input text is too long"); return;
+        }
+        if (inp_len == 0) {
+          print_result("Input text is empty"); return;
+        }
+        if (isNaN(inp_tip_btc)) {
+          print_result("Tip is not a number"); return;
+        }
+
+        let out = ' ';
+
+        let opreturn_unencoded = msg_broadcast(inp_text);
+        let opreturn = rc4_hex(inp_utxo, opreturn_unencoded);
+        console.log(opreturn);
+
+        //Sanity checks. Does decoded tx match inputs?
+        let info = decode_tx(opreturn, inp_utxo);
+        if (info.prefix != 'CNTRPRTY') {
+          print_result("Op_return encoding error. Wrong prefix."); return;
+        }
+        if (info.msg_id != 30) {
+          print_result("Op_return encoding error. Wrong messge ID."); return;
+        }
+        if (info.text != inp_text) {
+          print_result("Op_return encoding error. Wrong text."); return;
+        }
+
+
+        //Output messages and code
+        let code = 'OP_RETURN ' + opreturn + ',0' + tip_line(inp_tip_btc);
+
+        print_result(out, code)
+
+      }
+
+
+      function print_result(message = '', code = '') {
+        document.getElementById('text_output').innerHTML = '<br>' + message;
+        document.getElementById('code_output').innerHTML = code;
+      }
+
+    </script>
+
+  </head>
+
+  <body onload="get_url_parameters();display();">
+    <div id="content">
+      <div id="html_top"></div>
+      <h1>Broadcast Text</h1>
+      <div id="div_utxo">UTXO (Input Coin)<br>
+        <input id="input_utxo"><br><br></div>
+      <div id="div_text">Text<span id="count_chars" style="float:right"></span><br>
+        <input id="input_text" oninput="show_counter();" onchange="show_counter();"><br><br></div>
+      <div id="div_tip">Optional Tip to Developer (BTC)<span id="suggested_tip" style="float:right" onclick="document.getElementById('input_tip').value='0.0001';">Suggested: 0.0001</span><br>
+        <input id="input_tip"><br></div>
+      <button type="button" id="generate" onclick="prepare_inputs();" >Generate OP_RETURN</button><br><br>
+      <i><span style="font-size:75%">This is an experimental script. Peer review pending. Your tokens may get lost. Use at own risk!</span></i><br>
+      <span id="text_output">&nbsp;</span>
+      <textarea id="code_output" rows="2"></textarea>
+      <button type="button" id="copy" onclick="document.getElementById('code_output').select();document.execCommand('copy');">Copy</button><br><br>
+
+    </div> 
+  </body>
+  <script>
+    document.getElementById('input_tip').value = tip_btc;
+  </script>
+
+</html>

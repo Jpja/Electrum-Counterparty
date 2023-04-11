@@ -22,10 +22,34 @@ prefix_hex = ascii_to_hex(prefix); //434e545250525459
 */
 
 function msg_enhanced_send(recipient, asset, amount) {
-  const type = 2;
-  let type_hex = type.toString(16).padStart(2, '0');
+  const msg_id = 2;
+  let msg_id_hex = msg_id.toString(16).padStart(2, '0');
   let recipient_hex = address_to_hex(recipient);
   let asset_hex = asset_id_hex(asset).padStart(16, '0');
   let amount_hex = BigInt(amount).toString(16).padStart(16, '0'); 
-  return prefix_hex + type_hex + asset_hex + amount_hex + recipient_hex;  
+  return prefix_hex + msg_id_hex + asset_hex + amount_hex + recipient_hex;  
+}
+
+function msg_broadcast(text, ts = '', value = 0, fee = 0) {
+  const msg_id = 30;
+  let msg_id_hex = msg_id.toString(16).padStart(2, '0');
+  //Broadcast timestamp is UNIX in seconds
+  // Normal practice is to use current time
+  if (ts == '') {
+    ts = new Date().getTime() / 1000;
+    ts = Math.round(ts);
+  }
+  let ts_hex = ts.toString(16).padStart(8, '0');
+  //TODO: add support for value and fee
+  if (value != 0 || fee != 0) {
+    console.log('Broadcast function currently does not support custom "value" and "fee")');
+    return;
+  }
+  let value_hex = value.toString(16).padStart(16, '0');
+  let fee_hex = fee.toString(16).padStart(8, '0');
+  let text_hex = utf8_to_hex(text);
+  let text_len = text_hex.length / 2;
+  let text_len_hex = text_len.toString(16).padStart(2, '0');
+  return prefix_hex + msg_id_hex + ts_hex + value_hex + fee_hex + text_len_hex + text_hex;  
+  //return prefix_hex + msg_id_hex + ts_hex + value_hex + fee_hex + text_len_hex + text_hex;  
 }
