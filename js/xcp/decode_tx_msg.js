@@ -57,7 +57,7 @@ function decode_tx(msg, utxo = '') {
     let fee_hex = msg.slice(0,8);
     msg = msg.slice(8);
     let len_hex  = msg.slice(0,2);
-    let len = parseInt(len_hex);
+    let len = parseInt(len_hex, 16);
     msg = msg.slice(2);
     text_hex = msg.slice(0,len*2);
   }
