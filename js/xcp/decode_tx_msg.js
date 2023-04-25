@@ -48,7 +48,17 @@ function decode_tx(msg, utxo = '') {
     msg = msg.slice(16);
     addr_hex = msg.slice(0,42);
   }
-  
+
+  if (msg_id == 4) { //Sweep
+    const sweep_types = ['', 'tokens', 'assets', 'everything'];
+    addr_hex = msg.slice(0,42);
+    msg = msg.slice(42);
+    let flag_hex = msg.slice(0,2);
+    let flag  = Number(flag_hex.toString(10));
+    info['sweep_flag'] = flag;
+    info['sweep_type'] = sweep_types[flag];
+  }
+
   if (msg_id == 30) { //Broadcast
     let ts_hex = msg.slice(0,8);
     msg = msg.slice(8);
@@ -82,7 +92,7 @@ function decode_tx(msg, utxo = '') {
   if (addr_hex != '') {
     info['address'] = hex_to_address(addr_hex);
   }
-  
+
   if (text_hex != '') {
     info['text'] = hex_to_utf8(text_hex);
   }
@@ -102,6 +112,9 @@ function hex_to_address(hex) { //21 byte hex encoded in cntrprty message
   if (version_byte == '80') {
     return hex_to_bech32addr(hex); 
   }
+  if (version_byte == '6f') { //testnet
+    return hex_to_base58addr(hex);
+  }
   return 'cannot decode address';
 }
 
@@ -120,7 +133,7 @@ function hex_to_base58addr(hex) {
     output = ALPHABET[Number(rem)] + output;
   }
   //Leading 00's must be converted to 1's
-  let numLeadingZeros = Math.floor(hex.match(/^0+/)[0].length / 2);
+  let numLeadingZeros = Math.floor((hex.match(/^0+/) || [''])[0].length / 2);
   for (let i = 0; i < numLeadingZeros; i++) {
     output = "1" + output;
   }

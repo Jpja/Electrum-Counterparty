@@ -68,11 +68,11 @@
           return;
         }
         address = urlParams.get('address');
-        if (valid_btc_addr(address) == false) {
+        if (valid_btc_addr(address, 'bitcoin') == false) {
           document.getElementById('content').innerHTML = 'The provided address `'+address+'` is not a valid Bitcoin address.';
           return;
         }
-        if (valid_xcp_addr(address) == false) {
+        if (valid_xcp_addr(address, 'bitcoin') == false) {
           document.getElementById('content').innerHTML = 'The provided address `'+address+'` is not supported by Counterparty.';
           return;
         }

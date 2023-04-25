@@ -43,8 +43,8 @@ function hex2aq(hexx) {
 function hex_to_utf8(s)
 {
   return decodeURIComponent(
-     s.replace(/\s+/g, '') // remove spaces
-      .replace(/[0-9a-f]{2}/g, '%$&') // add '%' before each 2 characters
+    s.replace(/\s+/g, '') // remove spaces
+    .replace(/[0-9a-f]{2}/g, '%$&') // add '%' before each 2 characters
   );
 }
 
@@ -161,6 +161,10 @@ function address_to_hex(address) {
   if (address.toLowerCase().substr(0,4) == "bc1q" && address.length == 42) {
     return '80' + bech32toHex(address);
   }
+  if (address[0] == "m" || address[0] == "n") { //testnet
+    return '6f' + bytes_to_hex(bitcoinjs.address.fromBase58Check(address, bitcoinjs.networks.testnet).hash);
+  }
+
   console.log('Unable to convert address to hex'); return;
 }
 

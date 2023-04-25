@@ -30,6 +30,16 @@ function msg_enhanced_send(recipient, asset, amount) {
   return prefix_hex + msg_id_hex + asset_hex + amount_hex + recipient_hex;  
 }
 
+function msg_sweep(recipient, sweep_flag) {
+  const msg_id = 4;
+  let msg_id_hex = msg_id.toString(16).padStart(2, '0');
+  let recipient_hex = address_to_hex(recipient);
+  let sweep_flag_hex = sweep_flag.toString(16).padStart(2, '0');
+  //TODO: add support for memo
+  return prefix_hex + msg_id_hex + recipient_hex + sweep_flag_hex;  
+}
+
+
 function msg_broadcast(text, ts = '', value = 0, fee = 0) {
   const msg_id = 30;
   let msg_id_hex = msg_id.toString(16).padStart(2, '0');

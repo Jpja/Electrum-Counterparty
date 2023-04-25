@@ -31,6 +31,7 @@
       let utxo = '';
       let div = '';
       let max = '';
+      let network = 'bitcoin';
       function get_url_parameters() {
         //Get url parameter 'address'
         const queryString = window.location.search;
@@ -63,6 +64,9 @@
         }
         if (urlParams.has('max') && urlParams.has('div')) {
           max = urlParams.get('max');
+        }
+        if (urlParams.has('network')) {
+          network = urlParams.get('network');
         }
       }
 
@@ -132,10 +136,10 @@
         if (isNaN(inp_amount)) {
           print_result("Amount is not a number"); return;
         }
-        if (valid_btc_addr(inp_recipient) == false) {
+        if (valid_btc_addr(inp_recipient, network) == false) {
           print_result("Recipient is not a valid Bitcoin address"); return;
         }
-        if (valid_xcp_addr(inp_recipient) == false) {
+        if (valid_xcp_addr(inp_recipient, network) == false) {
           print_result("Recipient's address is not supported by Counterparty"); return;
         }
         if (isNaN(inp_tip_btc)) {
