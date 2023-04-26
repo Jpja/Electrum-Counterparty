@@ -307,6 +307,7 @@
         if (utxo != '') {
           params += '&utxo=' + utxo;
         }
+        params += '&xcp=' + xcp_balance;
         html += '<table>';
         html += '<tr><th>Address Actions</th></tr>';
         for (let i = 0; i < forms.length; i++)  {
@@ -318,22 +319,6 @@
         document.getElementById('content').innerHTML = header + html + wallet_footer;
       }
 
-      function balance_format(quant, div) {
-        //input quant in satoshis and 'div' or 'indiv'
-        let n = '';
-        if (div == 'indiv') {
-          n = Number(quant).toLocaleString("en-US");
-          n += '         '; // 9 spaces    
-        }
-        if (div == 'div') {
-          n = String(quant).padStart(9, '0');
-          let fractional = n.slice(-8);
-          let whole = n.slice(0,-8);
-          whole = Number(whole).toLocaleString("en-US");
-          n = whole + '.' + fractional;
-        }
-        return n;
-      }
 
     </script>
   </head>

@@ -77,3 +77,20 @@ function display_to_sat(q, div) {
   }
   return 'err';
 }
+
+function balance_format(q, div) {
+  //input quant in satoshis and 'div' or 'indiv'
+  let n = '';
+  if (div == 'indiv') {
+    n = Number(q).toLocaleString("en-US");
+    n += '         '; // 9 spaces    
+  }
+  if (div == 'div') {
+    n = String(q).padStart(9, '0');
+    let fractional = n.slice(-8);
+    let whole = n.slice(0,-8);
+    whole = Number(whole).toLocaleString("en-US");
+    n = whole + '.' + fractional;
+  }
+  return n;
+}

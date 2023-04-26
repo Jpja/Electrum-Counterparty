@@ -28,6 +28,7 @@
       let addr = '';
       let utxo = '';
       let network = 'bitcoin';
+      let xcp_balance = '';
       function get_url_parameters() {
         //Get url parameter 'address'
         const queryString = window.location.search;
@@ -39,6 +40,9 @@
           utxo = urlParams.get('utxo');
           document.getElementById('input_utxo').value = utxo;
           document.getElementById('div_utxo').style.display = 'none';
+        }
+        if (urlParams.has('xcp')) {
+          xcp_balance = urlParams.get('xcp');
         }
         if (urlParams.has('network')) {
           network = urlParams.get('network');
@@ -54,6 +58,11 @@
           header = header.replace('{utxo}', '');
         }
         document.getElementById('html_top').innerHTML = header;
+        
+        //Error message if insufficient XCP
+        if (xcp_balance != '' && xcp_balance < 5e7) { //0.5 xcp sweep fee
+          document.getElementById('content').innerHTML = addr + ' holds ' + balance_format(xcp_balance, 'div') + ' XCP.<br><br>This is insufficient for paying the 0.5 XCP sweep fee.';
+        }
       }
 
       function prepare_inputs() {
@@ -80,7 +89,9 @@
 
         let out = ' ';
         out += 'Make sure the first input coin is ' + addr_short(inp_utxo, 3, 2);
-        out += '<br>and that your <a href="{xchain_addr}">XCP balance</a> is at least 0.5 XCP to cover the sweep fee.';
+        if (xcp_balance == '') {
+          out += '<br>and that your <a href="{xchain_addr}">XCP balance</a> is at least 0.5 XCP to cover the sweep fee.';
+        }
         if (addr == '') {
           out = out. replace('{xchain_addr}', 'https://xchain.io/'); 
         } else {
