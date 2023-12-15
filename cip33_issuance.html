@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>CIP33 - Mint Token with File</title>
+    <link rel="stylesheet" href="css/main.css">
+
+    <script src="js/xcp/hex.js"></script>
+    <script src="js/xcp/assets.js"></script>
+    <script src="js/xcp/build_tx_msg.js"></script>
+    <script src="js/xcp/decode_tx_msg.js"></script>
+    <script src="js/xcp/display.js"></script>
+    <script src="js/xcp/rc4.js"></script>
+    <script src="js/xcp/validate_address.js"></script>
+    <script src="js/xcp/cip33.js"></script>
+
+    <script src="js/lib/bitcoinjs-lib.js"></script>
+    <script src="js/lib/bitcoinjs-message.js"></script>
+    <script src="js/lib/jquery-3.4.1.min.js"></script>
+    <script src="js/lib/lozad.min.js"></script>
+    <script src="js/lib/sha256.js"></script>
+    <script src="js/lib/btc.js"></script>
+
+    <script>
+      let addr = '';
+      let asset = '';
+      let longname = '';
+      let utxo = '';
+      let div = '';
+      let max = '';
+      let description_text = '';
+      function get_url_parameters() {
+        //Get url parameter 'address'
+        const queryString = window.location.search;
+        const urlParams = new URLSearchParams(queryString);
+        if (urlParams.has('address')) {
+          addr = urlParams.get('address');
+        }
+        if (urlParams.has('utxo')) {
+          utxo = urlParams.get('utxo');
+          document.getElementById('input_utxo').value = utxo;
+          document.getElementById('div_utxo').style.display = 'none';
+        }
+      }
+
+      function display() {
+        let header = wallet_header;
+        header = header.replace('{address}', addr_short(addr));
+        if (utxo != '') {
+          header = header.replace('{utxo}', '<span onclick="document.getElementById(\'div_utxo\').style.display=\'block\';">UTXO '+utxo.slice(0,4)+'</span>');
+        } else{
+          header = header.replace('{utxo}', '');
+        }
+        document.getElementById('html_top').innerHTML = header;
+        //Random A-name
+        let name = 'A' + randInt(1,9);
+        for (let i=1; i<=17; i++) {
+          name += randInt(0,9);  
+        }
+        document.getElementById('input_name').value = name;
+      }
+
+      function randInt(min, max) {
+        min = Math.ceil(min);
+        max = Math.floor(max);
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+      }
+
+      function show_counter() {
+        let text = document.getElementById('input_text').value;
+        let hex = utf8_to_hex(text);
+        let counter = hex.length/2 + '/54';
+        document.getElementById('count_chars').innerHTML = counter;
+      }
+
+      function prepare_inputs() {
+        let network = document.getElementById("network").value;
+        let inp_utxo = document.getElementById('input_utxo').value;  //eg a1870614c4cd1b3e20f98316f062c8622313eca4bbeb3f7bb695a61c164a45e7
+        let inp_name = document.getElementById('input_name').value;  //eg A269110002080613080 = A + 18 random digits
+        let inp_supply = document.getElementById('input_supply').value;
+        let inp_tip_btc = document.getElementById('input_tip').value;
+
+        //Inputs formatted ok?
+        inp_utxo = inp_utxo.substring(0,64);
+        inp_utxo = inp_utxo.toLowerCase();
+        if (inp_utxo.length != 64) {
+          print_result("UTXO is not valid"); return;
+        }
+        let inp_len = utf8_to_hex(description_text).length / 2;
+        if (inp_len > 54) {
+          print_result("File name is too long. Max 49 chars."); return; //54 minus 'FILE:' prefix
+        }
+        if (inp_len == 0) {
+          print_result("No file selected"); return;
+        }
+        if (isNaN(inp_tip_btc)) {
+          print_result("Tip is not a number"); return;
+        }
+
+        let out = ' ';
+
+        let opreturn_unencoded = cip33_msg_issuance(inp_name, parseInt(inp_supply), description_text);
+        console.log('Op_return unencoded: ' + opreturn_unencoded);
+        let opreturn = rc4_hex(inp_utxo, opreturn_unencoded);
+        
+        //Sanity checks. Does decoded tx match inputs?
+        let info = decode_tx(opreturn, inp_utxo);
+        if (info.prefix != 'CNTRPRTY') {
+          print_result("Op_return encoding error. Wrong prefix."); return;
+        }
+        if (info.msg_id != 20) {
+          print_result("Op_return encoding error. Wrong messge ID."); return;
+        }
+        if (file_size == 0) { 
+          print_result("File is empty."); return;   
+        }
+        if (file_size > 6304) {//197 * 32 bytes
+          print_result("File is too large. Max size 6304 bytes."); return;   
+        }
+
+        //Output messages and code
+        let sum_dust = 0;
+        let count = 0;
+        let dust = 0;
+        let addresses = file_to_addresses(file_hex, network);      
+        let code = '';
+        for (let i = 0; i<addresses.length; i++) {
+          dust = dust_limit+count;
+          code += '\n' + addresses[i] + ',' + sat_to_btc(dust);
+          count += 1;
+          sum_dust += dust;
+          if (i == 0) { //opreturn 2nd output. Transafers and burns ownership.   
+            dust = dust_limit+count;
+            code += '\nOP_RETURN ' + opreturn + ',' + sat_to_btc(dust);
+            count += 1;
+            sum_dust += dust;
+          }
+        }
+        if (network == 'bitcoin') {
+          code += tip_line(inp_tip_btc);
+        }
+        code = code.slice(1);
+
+        //Sanity check
+        if (file_hex != addresses_to_hex(addresses)) {
+          print_result("File or addresses encoding error."); return;
+        }
+
+        document.getElementById('warning_message').innerHTML = 'This transaction will forever save "' + file_name + '" on the blockchain.<br>₿' + sat_to_btc(sum_dust) + ' will get burnt.'; 
+        print_result(out, code)
+      }
+
+
+      function print_result(message = '', code = '') {
+        document.getElementById('text_output').innerHTML = '<br>' + message;
+        document.getElementById('code_output').innerHTML = code;
+      }
+
+    </script>
+
+  </head>
+
+  <body onload="get_url_parameters();display();">
+    <div id="content">
+      <div id="html_top"></div>
+      <h1>CIP33 – Token Issuance with File</h1>
+      <div>Mint a token with attached file stored on the blockchain (CIP33).</div><br>
+      <div id="div_network">Network<br>
+        <select name="network" id="network">
+          <option value="bitcoin">Bitcoin</option>
+          <option value="testnet">Testnet</option>
+        </select><br><br></div>
+      <div id="div_utxo">UTXO (Input Coin)<br>
+        <input id="input_utxo"><br><br></div>
+      <div id="div_name">Token Name<br>
+        <input id="input_name"><br><br></div>
+      <div id="div_supply">Token Supply<br>
+        <input id="input_supply" value="1"><br><br></div>
+      <div id="div_file">File<br>
+        <input id="browseOpen" type="file" id="file-input" /><br><br></div>
+      <div id="div_tip">Optional Tip to Developer (BTC)<span id="suggested_tip" style="float:right" onclick="document.getElementById('input_tip').value='0.0001';">Suggested: 0.0001</span><br>
+        <input id="input_tip"><br></div>
+      <button type="button" id="generate" onclick="prepare_inputs();" >Generate Transaction</button><br><br>
+      <i><span style="font-size:75%" id="warning_message">&nbsp;</span></i><br>
+      <span id="text_output">&nbsp;<br>&nbsp;</span>
+      <textarea id="code_output" rows="5"></textarea>
+      <button type="button" id="copy" onclick="document.getElementById('code_output').select();document.execCommand('copy');">Copy</button><br><br>
+
+    </div> 
+  </body>
+  <script>
+    document.getElementById('input_tip').value = tip_btc;
+
+    let file_hex = '';
+    let file_name = '';
+    let file_size = -1;
+
+    var fileInput = document.getElementById("browseOpen");
+    fileInput.onchange = function () {
+      file_hex = '';
+      var fr = new FileReader();
+      fr.onloadend = function () {
+        var result = this.result;
+        for (var i = 0; i < this.result.length; i++) {
+          var byteStr = result.charCodeAt(i).toString(16);
+          if (byteStr.length < 2) {
+            byteStr = "0" + byteStr;
+          }
+          file_hex += "" + byteStr;
+        }
+        //document.getElementById("input_text").value = 'FILE:' + file_name;
+        file_size = file_hex.length / 2;
+        description_text= 'FILE:' + file_name;
+      };
+      fr.readAsBinaryString(this.files[0]);
+      file_name = this.files[0].name;
+    };
+
+
+  </script>
+
+</html>

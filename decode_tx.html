@@ -26,7 +26,9 @@
         '56afd17f57a2815e86b324465ac264d1dee2bcedd847361754ef49887d116ba0', //16 Sweep 
         '793566ef1644a14c2658aed6b3c2df41bc519941f121f9cff82825f48911e451', //17 Subasset issuance 
         '940b4fede6ca11446c60e4f89dea1c38b7169b7c8fd1805e85eedc5b448a4f0d', //18 Enhanced send to bech32 addr 
-        'ca3ffd78d333969d333686563080a76830ce4df7c771e47e482317091ef069f4'  //19 Enhanced send to multisig addr 
+        'ca3ffd78d333969d333686563080a76830ce4df7c771e47e482317091ef069f4', //19 Enhanced send to multisig addr 
+        '31a96a3bd86600b4af3c81bc960b15e89e506f855e93fbbda6f701963b1936ac', //20 Issuance with STAMP image 
+        '549a5cc4bc189c800f0f9ea01068e8a7fd987c7dadb40c0b6a224d489ed070cc'  //21 Issuance with FILE in p2wsh outputs (cip33) 
       ];
 
       let msg_type = [];
@@ -38,17 +40,29 @@
       msg_type[12] = 'Dispenser';
       msg_type[20] = 'Issuance';
       msg_type[21] = 'Issuance (Subasset)';
+      msg_type[22] = 'Issuance';
+      msg_type[23] = 'Issuance (Subasset)';
       msg_type[30] = 'Broadcast';
       msg_type[50] = 'Dividend';
 
+      let standards = [ //prefix signaling a specific interpretation 
+        'stamp', //cipc26, cip 27
+        'file'   //cip33
+      ];
+
+      let p2wsh = []; //cip33
+
       const queryString = window.location.search;
       const urlParams = new URLSearchParams(queryString);
+      let network = urlParams.get('network');
+      if (network == 'testnet') network = 'test3';
+      if (network != 'test3') network = 'btc';
       let tx = urlParams.get('tx');
       if (tx == 'random') tx = example_txs[Math.floor(Math.random() * example_txs.length)];
       if (!isNaN(tx)) tx = example_txs[parseInt(tx)];
 
       async function get(tx) {
-        let url = 'https://api.blockcypher.com/v1/btc/main/txs/' + tx + '?instart=0&outstart=0&limit=200';
+        let url = 'https://api.blockcypher.com/v1/btc/' + network + '/txs/' + tx + '?instart=0&outstart=0&limit=200';
         let obj = await (await fetch(url)).json();
         return obj;
       }
@@ -94,6 +108,9 @@
           } else if (type == 'null-data') {
             script.push(x['data_hex']);
             to_addr.push('0');
+          } else if (type == 'pay-to-witness-script-hash') {
+            script.push('0');
+            p2wsh.push([x['script'], x['value']]);
           } else {
             script.push('?');
             to_addr.push('?');
@@ -428,7 +445,8 @@
           out += wl('Description', descr);
         }
 
-        if (id == 20 && block_height >= 753500) { //Issuance, post change 2022
+
+        if ((id == 20 && block_height >= 753500) || (id == 22 & block_height >= 819300)) { //Issuance, post changes 2022 (9.60) and 2023 (9.61)
           let asset_hex = cp_msg.substring(0,16);
           let asset = parseInt(asset_hex, 16);
           cp_msg = cp_msg.substring(16);
@@ -469,9 +487,13 @@
           //out += wl('Descr Length (int)', len);
           out += wl('Description (hex)', descr_hex);
           out += wl('Description', descr);
+          console.log(descr.toLowerCase().split(':')[0]);
+          if (standards.includes(descr.toLowerCase().split(':')[0])) {
+            out += print_standard(descr);                   
+          }
         }
 
-        if (id == 21 && block_height >= 753500) { //Issuance (Subasset), post change 2022
+        if ((id == 21 && block_height >= 753500) || (id == 23 & block_height >= 819300)) { //Issuance (Subasset), post changes 2022 (9.60) and 2023 (9.61)
           let asset_hex = cp_msg.substring(0,16);
           let asset = BigInt('0x'+asset_hex).toString(10);
           cp_msg = cp_msg.substring(16);
@@ -517,6 +539,9 @@
           out += wl('Subasset', subasset);
           out += wl('Description (hex)', descr_hex);
           out += wl('Description', descr);
+          if (standards.includes(descr.toLowerCase().split(':')[0])) {
+            out += print_standard(descr);                   
+          }
         }
 
         if (id == 30) { //Broadcast
@@ -556,6 +581,9 @@
           }
           out += wl('Text (hex)', text_hex);
           out += wl('Text', text);
+          if (standards.includes(text.toLowerCase().split(':')[0])) {
+            out += print_standard(text);                   
+          }
         }
 
         if (id == 50) { //Dividend
@@ -580,6 +608,7 @@
 
         document.getElementById("output").innerHTML = out;
         output2(hash);
+
       }
 
       function output2(tx) {
@@ -837,6 +866,68 @@
         return ret
       }
 
+      //Standards
+      function print_standard(descr) {
+        let prefix = descr.toLowerCase().split(':')[0];
+        let out = ''
+
+        if (prefix == 'stamp') {
+          out +=  wl('Standard', 'STAMP (CIP26, CIP27)');
+          //Display image if gif, png or jpeg
+          let image = descr.slice(6);
+          image = image.split(';')[0]; //cip26 allows several images. TODO: update to show all (if this ever is used)
+          /*image may be encoded different ways
+              stamp:iVBORw0KGgoAAAANSU...
+              stamp:image/png;iVBORw0KGgoAAAANSU...
+              stamp:data:image/png;base64, iVBORw0KGgoAAAANSU...
+          In general, if starts with 'R0lGOD' assume gif  https://stackoverflow.com/questions/57976898/how-to-get-mime-type-from-base-64-string
+                                     'iVBORw' assume png
+                                      '/9j/' assume jpeg          
+          */
+          image = image.split(';').pop(); // remove image/xxx; part if present
+          image = image.split(',').pop(); // remove base64, part if present
+          image = image.trim();
+          if (image.slice(0,6) == 'R0lGOD') out += '                   <img src="data:image/gif;base64, ' + image + '" />';
+          if (image.slice(0,6) == 'iVBORw') out += '                   <img src="data:image/png;base64, ' + image + '" />';
+          if (image.slice(0,4) == '/9j/')   out += '                   <img src="data:image/jpeg;base64, ' + image + '" />';
+        } 
+
+        if (prefix == 'file') {
+          out +=  wl('Standard', 'CIP33: File in P2WSH outputs');
+          let file_type = descr.split('.').pop();
+          file_type = file_type.toLowerCase();
+          let hex = '';
+          let dust = 0;
+          for (let i = 0; i < p2wsh.length; i++) {
+            hex += p2wsh[i][0].slice(4);
+            dust += p2wsh[i][1];
+          }
+          let file_size_hex = hex.slice(0,4);
+          let file_size = parseInt(file_size_hex, 16);
+          let file = hex.slice(4,4+file_size*2);
+          //Display image if gif, png or jpeg
+          if (file_type == 'gif' || file_type == 'png' || file_type == 'jpg' || file_type == 'jpeg') {
+            let base64 = btoa(file.match(/\w{2}/g).map(function(y){return String.fromCharCode(parseInt(y,16));}).join(''));
+            out += '                   <img src="data:image/' + file_type + ';base64, ' + base64 + '" /><br>';
+          }
+          //Display text file
+          if (file_type == 'txt') {
+            let text = hex2a(file);
+            text = decodeURIComponent(escape(text));
+            out += wl('File content', ' ');
+            out += '<div style="background-color: #feff9c;">' + text + '</div><br>';
+          }
+          
+          out +=  wl('File size (hex)', file_size_hex);
+          out +=  wl('File size (int)', file_size);
+          out +=  wl('Burned (sat)', dust);
+          out +=  wl('Burned (btc)', (dust/100000000).toFixed(8));
+          out +=  wl('Raw file', file);
+        }
+
+        return out;
+      }
+
     </script>
 
     <style>
@@ -863,6 +954,10 @@
       input[type=submit] {
         width: 12em; 
         margin-top: 7px;
+      }
+      img {
+        width: 150px;
+        image-rendering: crisp-edges;
       }
     </style>
   </head>

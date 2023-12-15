@@ -2,12 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8">
-    <title>Broadcast Text w/ Electrum</title>
+    <title>CIP33 - Broadcast File</title>
     <link rel="stylesheet" href="css/main.css">
-
-    <script src="db/asset_longnames.js"></script>
-    <script src="db/assets_div.js"></script>
-    <script src="db/assets_indiv.js"></script>
 
     <script src="js/xcp/hex.js"></script>
     <script src="js/xcp/assets.js"></script>
@@ -16,6 +12,7 @@
     <script src="js/xcp/display.js"></script>
     <script src="js/xcp/rc4.js"></script>
     <script src="js/xcp/validate_address.js"></script>
+    <script src="js/xcp/cip33.js"></script>
 
     <script src="js/lib/bitcoinjs-lib.js"></script>
     <script src="js/lib/bitcoinjs-message.js"></script>
@@ -31,6 +28,7 @@
       let utxo = '';
       let div = '';
       let max = '';
+      let broadcast_text = '';
       function get_url_parameters() {
         //Get url parameter 'address'
         const queryString = window.location.search;
@@ -63,10 +61,9 @@
         document.getElementById('count_chars').innerHTML = counter;
       }
 
-
       function prepare_inputs() {
-        let inp_utxo = document.getElementById('input_utxo').value;            //eg a1870614c4cd1b3e20f98316f062c8622313eca4bbeb3f7bb695a61c164a45e7
-        let inp_text = document.getElementById('input_text').value;  //eg bc1qqqj54caf4cusvycr4dmzv24pgh875xeg8d5wrq
+        let network = document.getElementById("network").value;
+        let inp_utxo = document.getElementById('input_utxo').value;  //eg a1870614c4cd1b3e20f98316f062c8622313eca4bbeb3f7bb695a61c164a45e7
         let inp_tip_btc = document.getElementById('input_tip').value;
 
         //Inputs formatted ok?
@@ -75,12 +72,12 @@
         if (inp_utxo.length != 64) {
           print_result("UTXO is not valid"); return;
         }
-        let inp_len = utf8_to_hex(inp_text).length / 2;
+        let inp_len = utf8_to_hex(broadcast_text).length / 2;
         if (inp_len > 54) {
-          //print_result("Input text is too long"); return;
+          print_result("File name is too long. Max 49 chars."); return; //54 minus 'FILE:' prefix
         }
         if (inp_len == 0) {
-          print_result("Input text is empty"); return;
+          print_result("No file selected"); return;
         }
         if (isNaN(inp_tip_btc)) {
           print_result("Tip is not a number"); return;
@@ -88,9 +85,9 @@
 
         let out = ' ';
 
-        let opreturn_unencoded = msg_broadcast(inp_text);
+        let opreturn_unencoded = msg_broadcast(broadcast_text);
+        console.log('Op_return unencoded: ' + opreturn_unencoded);
         let opreturn = rc4_hex(inp_utxo, opreturn_unencoded);
-        console.log(opreturn);
 
         //Sanity checks. Does decoded tx match inputs?
         let info = decode_tx(opreturn, inp_utxo);
@@ -100,16 +97,36 @@
         if (info.msg_id != 30) {
           print_result("Op_return encoding error. Wrong messge ID."); return;
         }
-        if (info.text != inp_text) {
+        if (info.text != broadcast_text) {
           print_result("Op_return encoding error. Wrong text."); return;
         }
-
+        if (file_size == 0) { 
+          print_result("File is empty."); return;   
+        }
+        if (file_size > 6304) {//197 * 32 bytes
+          print_result("File is too large. Max size 6304 bytes."); return;   
+        }
 
         //Output messages and code
-        let code = 'OP_RETURN ' + opreturn + ',0' + tip_line(inp_tip_btc);
+        let sum_dust = 0;
+        let addresses = file_to_addresses(file_hex, network);      
+        let code = 'OP_RETURN ' + opreturn + ',0';
+        for (let i = 0; i<addresses.length; i++) {
+          let dust = dust_limit + i
+          code += '\n' + addresses[i] + ',' + sat_to_btc(dust);
+          sum_dust += dust_limit + i;
+        }
+        if (network == 'bitcoin') {
+          code += tip_line(inp_tip_btc);
+        }
 
+        //Sanity check
+        if (file_hex != addresses_to_hex(addresses)) {
+          print_result("File or addresses encoding error."); return;
+        }
+
+        document.getElementById('warning_message').innerHTML = 'This transaction will forever save "' + file_name + '" on the blockchain.<br>₿' + sat_to_btc(sum_dust) + ' will get burnt.'; 
         print_result(out, code)
-
       }
 
 
@@ -125,23 +142,56 @@
   <body onload="get_url_parameters();display();">
     <div id="content">
       <div id="html_top"></div>
-      <h1>Broadcast Text</h1>
+      <h1>CIP33 – Broadcast File</h1>
+      <div>Store a file in a Bitcoin transaction (CIP33).</div><br>
+      <div id="div_network">Network<br>
+        <select name="network" id="network">
+          <option value="bitcoin">Bitcoin</option>
+          <option value="testnet">Testnet</option>
+        </select><br><br></div>
       <div id="div_utxo">UTXO (Input Coin)<br>
         <input id="input_utxo"><br><br></div>
-      <div id="div_text">Text<span id="count_chars" style="float:right"></span><br>
-        <input id="input_text" oninput="show_counter();" onchange="show_counter();"><br><br></div>
+      <div id="div_file">File<br>
+        <input id="browseOpen" type="file" id="file-input" /><br><br></div>
       <div id="div_tip">Optional Tip to Developer (BTC)<span id="suggested_tip" style="float:right" onclick="document.getElementById('input_tip').value='0.0001';">Suggested: 0.0001</span><br>
         <input id="input_tip"><br></div>
-      <button type="button" id="generate" onclick="prepare_inputs();" >Generate OP_RETURN</button><br><br>
-      <i><span style="font-size:75%">This is an experimental script. Peer review pending. Your tokens may get lost. Use at own risk!</span></i><br>
-      <span id="text_output">&nbsp;</span>
-      <textarea id="code_output" rows="2"></textarea>
+      <button type="button" id="generate" onclick="prepare_inputs();" >Generate Transaction</button><br><br>
+      <i><span style="font-size:75%" id="warning_message">&nbsp;</span></i><br>
+      <span id="text_output">&nbsp;<br>&nbsp;</span>
+      <textarea id="code_output" rows="5"></textarea>
       <button type="button" id="copy" onclick="document.getElementById('code_output').select();document.execCommand('copy');">Copy</button><br><br>
 
     </div> 
   </body>
   <script>
     document.getElementById('input_tip').value = tip_btc;
+
+    let file_hex = '';
+    let file_name = '';
+    let file_size = -1;
+
+    var fileInput = document.getElementById("browseOpen");
+    fileInput.onchange = function () {
+      file_hex = '';
+      var fr = new FileReader();
+      fr.onloadend = function () {
+        var result = this.result;
+        for (var i = 0; i < this.result.length; i++) {
+          var byteStr = result.charCodeAt(i).toString(16);
+          if (byteStr.length < 2) {
+            byteStr = "0" + byteStr;
+          }
+          file_hex += "" + byteStr;
+        }
+        //document.getElementById("input_text").value = 'FILE:' + file_name;
+        file_size = file_hex.length / 2;
+        broadcast_text= 'FILE:' + file_name;
+      };
+      fr.readAsBinaryString(this.files[0]);
+      file_name = this.files[0].name;
+    };
+
+
   </script>
 
 </html>

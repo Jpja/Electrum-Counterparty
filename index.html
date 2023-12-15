@@ -32,9 +32,10 @@
       const TO_RECEIVER = 0.00005420; //BTC dust sent along asset
       const forms = [
         ['Send', 'send.html'],
-        ['Asset Transfer', 'asset_transfer.html'],
         ['Sweep', 'sweep.html'],
-        ['Broadcast Text', 'broadcast_text.html']
+        ['Broadcast Text', 'broadcast_text.html'],
+        ['Broadcast File (CIP33)', 'cip33_broadcast.html'],
+        ['Issue Token w/ File (CIP33)', 'cip33_issuance.html']
       ];
       for (let i = 0; i < forms.length; i++) {
         forms[i].push('<a href="'+forms[i][1]+'{params}">'+forms[i][0]+'</a>'); 
