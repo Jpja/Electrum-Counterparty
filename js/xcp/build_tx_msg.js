@@ -63,3 +63,19 @@ function msg_broadcast(text, ts = '', value = 0, fee = 0) {
   return prefix_hex + msg_id_hex + ts_hex + value_hex + fee_hex + text_len_hex + text_hex;  
   //return prefix_hex + msg_id_hex + ts_hex + value_hex + fee_hex + text_len_hex + text_hex;  
 }
+
+function msg_create_dispenser(asset, amount_escrow, amount_give, amount_btc, dispenser_address = '') {
+  const msg_id = 12;
+  let status_hex = '00';
+  let msg_id_hex = msg_id.toString(16).padStart(2, '0');
+  let asset_hex = asset_id_hex(asset).padStart(16, '0');
+  let amount_escrow_hex = BigInt(amount_escrow).toString(16).padStart(16, '0');
+  let amount_give_hex = BigInt(amount_give).toString(16).padStart(16, '0');
+  let amount_btc_hex = BigInt(amount_btc).toString(16).padStart(16, '0');
+  let dispenser_address_hex = '';
+  if (dispenser_address != '') {
+    status_hex = '01';
+    dispenser_address_hex = address_to_hex(dispenser_address);
+  }
+  return prefix_hex + msg_id_hex + asset_hex + amount_give_hex + amount_escrow_hex + amount_btc_hex + status_hex + dispenser_address_hex;  
+}

@@ -4,7 +4,7 @@ const tip_btc = '0';
 const wallet_header = `<b>XCP Opreturn Builder for Electrum</b><div style="float:right;text-align: right;width:50%;">{address}<br>{utxo}</div>
 <div><i>Alpha release. For testing only!</i></div>`;
 
-const wallet_footer = `<p>Footer goes here</p>`;
+const wallet_footer = `<p>&nbsp;</p>`;
 
 function addr_short(address, start = 4, end = 2) {
   if (address == '') return '';

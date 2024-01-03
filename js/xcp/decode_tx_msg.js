@@ -59,6 +59,22 @@ function decode_tx(msg, utxo = '') {
     info['sweep_type'] = sweep_types[flag];
   }
 
+  if (msg_id == 12) { //Dispenser
+    asset_id_hex = msg.slice(0,16);
+    msg = msg.slice(16);
+    give_hex = msg.slice(0,16);
+    msg = msg.slice(16);
+    escrow_hex = msg.slice(0,16);
+    msg = msg.slice(16);
+    btc_hex = msg.slice(0,16);
+    msg = msg.slice(16);
+    dispenser_status = msg.slice(0,2);
+    msg = msg.slice(2);
+    if (dispenser_status == '01') {
+      addr_hex = msg;
+    }
+  }
+
   if (msg_id == 30) { //Broadcast
     let ts_hex = msg.slice(0,8);
     msg = msg.slice(8);
@@ -89,6 +105,27 @@ function decode_tx(msg, utxo = '') {
     info['amount_display'] = sat_to_display(amount, div);
   }
 
+  //for dispensers there are three kinds of 'amount'; give, escrow, btc
+  if (msg_id == 12) {
+    if (give_hex != '') {
+      let amount = BigInt('0x'+give_hex).toString(10);
+      let div = get_divisibility(asset);
+      info['give_amount'] = amount;
+      info['give_amount_display'] = sat_to_display(amount, div);
+    }
+    if (escrow_hex != '') {
+      let amount = BigInt('0x'+escrow_hex).toString(10);
+      let div = get_divisibility(asset);
+      info['escrow_amount'] = amount;
+      info['escrow_amount_display'] = sat_to_display(amount, div);
+    }
+    if (btc_hex != '') {
+      let amount = BigInt('0x'+btc_hex).toString(10);
+      info['btc_amount'] = amount;
+      info['btc_amount_display'] = sat_to_display(amount, 'div');
+    }
+  }
+
   if (addr_hex != '') {
     info['address'] = hex_to_address(addr_hex);
   }
@@ -99,6 +136,7 @@ function decode_tx(msg, utxo = '') {
 
   return info;
 }
+
 
 
 

@@ -32,6 +32,7 @@
       const TO_RECEIVER = 0.00005420; //BTC dust sent along asset
       const forms = [
         ['Send', 'send.html'],
+        ['Sell (Dispenser)', 'dispenser.html'],
         ['Sweep', 'sweep.html'],
         ['Broadcast Text', 'broadcast_text.html'],
         ['Broadcast File (CIP33)', 'cip33_broadcast.html'],
@@ -202,7 +203,7 @@
 
       function displayBalances() {
         let html = '';
-        let url_send = 'send.html?asset={asset}&longname={longname}&max={max}&div={div}&address={addr}&utxo={utxo}';
+        let url_send = 'asset={asset}&longname={longname}&max={max}&div={div}&address={addr}&utxo={utxo}';
 
         //UTXOs
         let utxo = '';
@@ -238,10 +239,10 @@
             send_link = send_link.replace('{div}', balances[i].divisibility);
             send_link = send_link.replace('{addr}', address);
             send_link = send_link.replace('{utxo}', utxo);
-            send_links.push('<a href="'+send_link+'">Send</a>');
+            send_links.push('<a href="send.html?'+send_link+'">Send</a> | <a href="dispenser.html?'+send_link+'">Sell</a>');
             if (balances[i].asset == 'XCP') {
               xcp_balance = balances[i].quantity;
-              send_link_xcp = '<a href="'+send_link+'">Send</a>';
+              send_link_xcp = '<a href="send.html?'+send_link+'">Send</a> | <a href="dispenser.html?'+send_link+'">Sell</a>';
             }
           }
         }
