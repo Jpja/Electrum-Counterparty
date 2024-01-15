@@ -28,7 +28,8 @@
         '940b4fede6ca11446c60e4f89dea1c38b7169b7c8fd1805e85eedc5b448a4f0d', //18 Enhanced send to bech32 addr 
         'ca3ffd78d333969d333686563080a76830ce4df7c771e47e482317091ef069f4', //19 Enhanced send to multisig addr 
         '31a96a3bd86600b4af3c81bc960b15e89e506f855e93fbbda6f701963b1936ac', //20 Issuance with STAMP image 
-        '549a5cc4bc189c800f0f9ea01068e8a7fd987c7dadb40c0b6a224d489ed070cc'  //21 Issuance with FILE in p2wsh outputs (cip33) 
+        '549a5cc4bc189c800f0f9ea01068e8a7fd987c7dadb40c0b6a224d489ed070cc', //21 Issuance with FILE in p2wsh outputs (cip33) 
+        'd36f1176ab64d9fc3898ca97822b9f900f11ce4da80ed3f474b75d7a1ebdc597'  //22 Destruction 
       ];
 
       let msg_type = [];
@@ -44,6 +45,7 @@
       msg_type[23] = 'Issuance (Subasset)';
       msg_type[30] = 'Broadcast';
       msg_type[50] = 'Dividend';
+      msg_type[110] = 'Desctruction';
 
       let standards = [ //prefix signaling a specific interpretation 
         'stamp', //cipc26, cip 27
@@ -608,6 +610,25 @@
           out += wl('Div. Asset', asset_name(asset2));
         }
 
+        if (id == 110) { //Destruction
+          let asset_hex = cp_msg.substring(0,16);
+          let asset = parseInt(asset_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          let q_hex = cp_msg.substring(0,16);
+          let q = parseInt(q_hex, 16);
+          cp_msg = cp_msg.substring(16);
+          let text_hex = cp_msg;
+          let text = hex2a(text_hex);        
+          text = decodeURIComponent(escape(text.substring(0)));
+          out += wl('Asset (hex)', asset_hex);
+          out += wl('Asset (int)', asset);
+          out += wl('Asset', asset_name(asset));
+          out += wl('Destr Amount (hex)', q_hex);
+          out += wl('Destr Amount (sat)', q);
+          out += wl('Text (hex)', text_hex);
+          out += wl('Text', text);
+        }
+
         document.getElementById("output").innerHTML = out;
         output2(hash);
 
@@ -919,7 +940,7 @@
             out += wl('File content', ' ');
             out += '<div style="background-color: #feff9c;">' + text + '</div><br>';
           }
-          
+
           out +=  wl('File size (hex)', file_size_hex);
           out +=  wl('File size (int)', file_size);
           out +=  wl('Burned (sat)', dust);
@@ -982,12 +1003,8 @@
         For more info, read <a href="https://jpjanssen.com/how-to-reverse-engineer-counterparty-txs/">blog post</a>.<br>
         <br><br>Made by JP Janssen<br>
         MIT license<br><br>
-        <a href="https://jpjanssen.com/donation-dispensers-for-my-xcp-projects/">Donate</a><br>
-        BTC: bc1qg8vldv8kk4mqafs87z2yv0xpq4wr4csucr3cj7<br>
-        DOGE: DChdsuLuEvAPZb9ZXpiEpimgidSJ5VqShq<br>
-        ETH: 0x4144CbaF54044510AB2F2f3c51061Dd5558cD604<br>
-        <i>BTC and DOGE addresses have dispensers installed.<br>
-          You automatically get vintage tokens in return.</i>
+        <i>Donate BTC &amp; Counterparty tokens:<br>
+        bc1qg8vldv8kk4mqafs87z2yv0xpq4wr4csucr3cj7</i><br>
       </div>
     </div>
   </body>
