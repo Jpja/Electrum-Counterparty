@@ -919,6 +919,9 @@
           out +=  wl('Standard', 'CIP33: File in P2WSH outputs');
           let file_type = descr.split('.').pop();
           file_type = file_type.toLowerCase();
+          if (file_type === 'svg') {
+            file_type = 'svg+xml';
+          }
           let hex = '';
           let dust = 0;
           for (let i = 0; i < p2wsh.length; i++) {
@@ -929,9 +932,9 @@
           let file_size = parseInt(file_size_hex, 16);
           let file = hex.slice(4,4+file_size*2);
           //Display image if gif, png or jpeg
-          if (file_type == 'gif' || file_type == 'png' || file_type == 'jpg' || file_type == 'jpeg') {
+          if (file_type == 'gif' || file_type == 'png' || file_type == 'jpg' || file_type == 'jpeg' || file_type == 'svg+xml') {
             let base64 = btoa(file.match(/\w{2}/g).map(function(y){return String.fromCharCode(parseInt(y,16));}).join(''));
-            out += '                   <img src="data:image/' + file_type + ';base64, ' + base64 + '" /><br>';
+            out += '                   <img style="image-rendering:pixelated" src="data:image/' + file_type + ';base64, ' + base64 + '" /><br>';
           }
           //Display text file
           if (file_type == 'txt') {
