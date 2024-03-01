@@ -29,12 +29,16 @@
       let div = '';
       let max = '';
       let description_text = '';
+      let network = 'bitcoin';
       function get_url_parameters() {
         //Get url parameter 'address'
         const queryString = window.location.search;
         const urlParams = new URLSearchParams(queryString);
         if (urlParams.has('address')) {
           addr = urlParams.get('address');
+        }
+        if (urlParams.has('network')) {
+          network = urlParams.get('network');
         }
         if (urlParams.has('utxo')) {
           utxo = urlParams.get('utxo');
@@ -52,25 +56,30 @@
           header = header.replace('{utxo}', '');
         }
         document.getElementById('html_top').innerHTML = header;
-        //Random A-name
-        let name = '';
-        let eights = 0;  
-        do {
-          name = 'A';
-          eights = 0;
-          for (let i=1; i<=18; i++) {
-            let r = randInt(0,9);
-            name += r;
-            if (r == 8) eights += 1;
-          }
-        } while (eights < 8);
-        document.getElementById('input_name').value = name;
       }
 
       function randInt(min, max) {
         min = Math.ceil(min);
         max = Math.floor(max);
         return Math.floor(Math.random() * (max - min + 1)) + min;
+      }
+
+      function rand_octa_name() {
+        //Returns a random numeric asset name
+        //  that contains eight eights
+        let name = '';
+        let eights = 0;  
+        do {
+          name = 'A8';
+          eights = 1;
+          for (let i=2; i<=17; i++) {
+            let r = randInt(0,9);
+            name += r;
+            if (r == 8) eights += 1;
+          }
+        } while (eights != 7);
+        name += '8';
+        return name;
       }
 
       function show_counter() {
@@ -81,16 +90,15 @@
       }
 
       function prepare_inputs() {
-        let network = document.getElementById("network").value;
         let inp_utxo = document.getElementById('input_utxo').value;  //eg a1870614c4cd1b3e20f98316f062c8622313eca4bbeb3f7bb695a61c164a45e7
-        let inp_name = document.getElementById('input_name').value;  //eg A269110002080613080 = A + 18 random digits
+        let inp_name = rand_octa_name(); //document.getElementById('input_name').value;  //eg A269110002080613080 = A + 18 random digits
         let inp_supply = document.getElementById('input_supply').value;
         let inp_tip_btc = document.getElementById('input_tip').value;
 
         //Inputs formatted ok?
-        inp_utxo = inp_utxo.substring(0,64);
-        inp_utxo = inp_utxo.toLowerCase();
-        if (inp_utxo.length != 64) {
+        let utxo = inp_utxo.substring(0,64);
+        utxo = utxo.toLowerCase();
+        if (utxo.length != 64) {
           print_result("UTXO is not valid"); return;
         }
         let inp_len = utf8_to_hex(description_text).length / 2;
@@ -112,14 +120,14 @@
           print_result("Tip is not a number"); return;
         }
 
-        let out = ' ';
+        let out = '';
 
         let opreturn_unencoded = cip33_msg_issuance(inp_name, parseInt(inp_supply), description_text);
         console.log('Op_return unencoded: ' + opreturn_unencoded);
-        let opreturn = rc4_hex(inp_utxo, opreturn_unencoded);
+        let opreturn = rc4_hex(utxo, opreturn_unencoded);
 
         //Sanity checks. Does decoded tx match inputs?
-        let info = decode_tx(opreturn, inp_utxo);
+        let info = decode_tx(opreturn, utxo);
         if (info.prefix != 'CNTRPRTY') {
           print_result("Op_return encoding error. Wrong prefix."); return;
         }
@@ -160,15 +168,31 @@
         if (file_hex != addresses_to_hex(addresses)) {
           print_result("File or addresses encoding error."); return;
         }
-        
 
-        document.getElementById('warning_message').innerHTML = 'This transaction will forever save "' + file_name + '" on the blockchain.<br>₿' + sat_to_btc(sum_dust) + ' will get burnt.'; 
+
+        //document.getElementById('warning_message').innerHTML = 'This transaction will forever save "' + file_name + '" on the blockchain.<br>₿' + sat_to_btc(sum_dust) + ' will get burnt.'; 
+        out += '<b>Success!</b>'
+        out += '<br>Make sure all details are correct.';
+        if (network == 'testnet') out += '<br><b>Network    Testnet</b>'
+        out += '<br>Input coin ' + inp_utxo;
+        out += '<br>Burn       ₿' + sat_to_btc(sum_dust);
+        out += '<br>Token      ' + inp_name;
+        out += '<br>Supply     ' + parseInt(inp_supply);
+        out += '<br>Text       ' + description_text;
+        
+        //show image
+        if (file_extension == 'svg') file_extension = 'svg+xml';
+        let file_base64 = btoa(file_hex.match(/\w{2}/g).map(function(y){return String.fromCharCode(parseInt(y,16));}).join(''));
+        out += '<br>           <img style="image-rendering:pixelated" src="data:image/' + file_extension + ';base64, ' + file_base64 + '" /><br>';
+        
+        out += '<br>Send from Electrum to mint your token.';
+        
         print_result(out, code)
       }
 
 
       function print_result(message = '', code = '') {
-        document.getElementById('text_output').innerHTML = '<br>' + message;
+        document.getElementById('text_output').innerHTML = message;
         document.getElementById('code_output').innerHTML = code;
       }
 
@@ -180,25 +204,18 @@
     <div id="content">
       <div id="html_top"></div>
       <h1>OLGA STAMP MINTER</h1>
-      <div>Generate a Bitcoin Stamp minting transaction.<br>Send from Electrum. Instructions.</div><br>
-      <div id="div_network">Network<br>
-        <select name="network" id="network">
-          <option value="bitcoin">Bitcoin</option>
-          <option value="testnet">Testnet</option>
-        </select><br><br></div>
+      <div>Generate a Bitcoin Stamp minting transaction.<br>Read nstructions.</div><br>
       <div id="div_utxo">UTXO (Input Coin)<br>
         <input id="input_utxo"><br><br></div>
-      <div id="div_name">Token Name<br>
-        <input id="input_name"><br><br></div>
       <div id="div_supply">Token Supply<br>
         <input id="input_supply" value="1"><br><br></div>
       <div id="div_file">File<br>
         <input id="browseOpen" type="file" id="file-input" /><br><br></div>
       <div id="div_tip">Optional Tip to Developer (BTC)<span id="suggested_tip" style="float:right" onclick="document.getElementById('input_tip').value='0.0001';">Suggested: 0.0001</span><br>
         <input id="input_tip"><br></div>
-      <button type="button" id="generate" onclick="prepare_inputs();">Generate Transaction</button><br><br>
+      <button type="button" id="generate" onclick="prepare_inputs();">Generate Transaction</button><br>
       <i><span style="font-size:75%" id="warning_message">&nbsp;</span></i><br>
-      <span id="text_output">&nbsp;<br>&nbsp;</span>
+      <span id="text_output" style="white-space:pre;font-size:75%;">&nbsp;<br>&nbsp;</span>
       <textarea id="code_output" rows="5"></textarea>
       <button type="button" id="copy" onclick="document.getElementById('code_output').select();document.execCommand('copy');">Copy</button><br><br>
 

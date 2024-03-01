@@ -48,7 +48,7 @@
       msg_type[110] = 'Desctruction';
 
       let standards = [ //prefix signaling a specific interpretation 
-        'stamp', //cipc26, cip 27
+        'stamp', //classic cipc26/cip 27 or OLGA cip33
         'file'   //cip33
       ];
 
@@ -895,11 +895,14 @@
         let out = ''
 
         if (prefix == 'stamp') {
-          out +=  wl('Standard', 'STAMP (CIP26, CIP27)');
-          //Display image if gif, png or jpeg
-          let image = descr.slice(6);
-          image = image.split(';')[0]; //cip26 allows several images. TODO: update to show all (if this ever is used)
-          /*image may be encoded different ways
+          //test if classic (base64) or OLGA (p2wsh)
+          
+          if (/^[a-zA-Z0-9+\/=]+$/.test(descr.substr(descr.length - 45))) { //Base64 Stamp
+            out +=  wl('Standard', 'STAMP (Base64)');
+            //Display image if gif, png or jpeg
+            let image = descr.slice(6);
+            image = image.split(';')[0]; //cip26 allows several images. TODO: update to show all (if this ever is used)
+            /*image may be encoded different ways
               stamp:iVBORw0KGgoAAAANSU...
               stamp:image/png;iVBORw0KGgoAAAANSU...
               stamp:data:image/png;base64, iVBORw0KGgoAAAANSU...
@@ -907,21 +910,46 @@
                                      'iVBORw' assume png
                                       '/9j/' assume jpeg          
           */
-          image = image.split(';').pop(); // remove image/xxx; part if present
-          image = image.split(',').pop(); // remove base64, part if present
-          image = image.trim();
-          if (image.slice(0,6) == 'R0lGOD') out += '                   <img src="data:image/gif;base64, ' + image + '" />';
-          if (image.slice(0,6) == 'iVBORw') out += '                   <img src="data:image/png;base64, ' + image + '" />';
-          if (image.slice(0,4) == '/9j/')   out += '                   <img src="data:image/jpeg;base64, ' + image + '" />';
+            image = image.split(';').pop(); // remove image/xxx; part if present
+            image = image.split(',').pop(); // remove base64, part if present
+            image = image.trim();
+            if (image.slice(0,6) == 'R0lGOD') out += '                   <img src="data:image/gif;base64, ' + image + '" />';
+            if (image.slice(0,6) == 'iVBORw') out += '                   <img src="data:image/png;base64, ' + image + '" />';
+            if (image.slice(0,4) == '/9j/')   out += '                   <img src="data:image/jpeg;base64, ' + image + '" />';
+
+          } else { //OLGA Stamp
+            out +=  wl('Standard', 'STAMP (OLGA)');
+            let file_type = descr.split('.').pop();
+            file_type = file_type.toLowerCase();
+            let hex = '';
+            let dust = 0;
+            for (let i = 0; i < p2wsh.length; i++) {
+              hex += p2wsh[i][0].slice(4);
+              dust += p2wsh[i][1];
+            }
+            let file_size_hex = hex.slice(0,4);
+            let file_size = parseInt(file_size_hex, 16);
+            let file = hex.slice(4,4+file_size*2);
+            //Display image if gif, png, jpeg or svg
+            if (file_type === 'svg') {
+              file_type = 'svg+xml';
+            }
+            if (file_type == 'gif' || file_type == 'png' || file_type == 'jpg' || file_type == 'jpeg' || file_type == 'svg+xml') {
+              let base64 = btoa(file.match(/\w{2}/g).map(function(y){return String.fromCharCode(parseInt(y,16));}).join(''));
+              out += '                   <img style="image-rendering:pixelated" src="data:image/' + file_type + ';base64, ' + base64 + '" /><br>';
+            }
+            out +=  wl('File size (hex)', file_size_hex);
+            out +=  wl('File size (int)', file_size);
+            out +=  wl('Burned (sat)', dust);
+            out +=  wl('Burned (btc)', (dust/100000000).toFixed(8));
+            out +=  wl('Raw file', file);
+          }
         } 
 
         if (prefix == 'file') {
           out +=  wl('Standard', 'CIP33: File in P2WSH outputs');
           let file_type = descr.split('.').pop();
           file_type = file_type.toLowerCase();
-          if (file_type === 'svg') {
-            file_type = 'svg+xml';
-          }
           let hex = '';
           let dust = 0;
           for (let i = 0; i < p2wsh.length; i++) {
@@ -932,6 +960,9 @@
           let file_size = parseInt(file_size_hex, 16);
           let file = hex.slice(4,4+file_size*2);
           //Display image if gif, png or jpeg
+          if (file_type === 'svg') {
+            file_type = 'svg+xml';
+          }
           if (file_type == 'gif' || file_type == 'png' || file_type == 'jpg' || file_type == 'jpeg' || file_type == 'svg+xml') {
             let base64 = btoa(file.match(/\w{2}/g).map(function(y){return String.fromCharCode(parseInt(y,16));}).join(''));
             out += '                   <img style="image-rendering:pixelated" src="data:image/' + file_type + ';base64, ' + base64 + '" /><br>';
@@ -1007,7 +1038,7 @@
         <br><br>Made by JP Janssen<br>
         MIT license<br><br>
         <i>Donate BTC &amp; Counterparty tokens:<br>
-        bc1qg8vldv8kk4mqafs87z2yv0xpq4wr4csucr3cj7</i><br>
+          bc1qg8vldv8kk4mqafs87z2yv0xpq4wr4csucr3cj7</i><br>
       </div>
     </div>
   </body>
