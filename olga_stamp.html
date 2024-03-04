@@ -154,7 +154,8 @@
           sum_dust += dust;
           if (i == 0) { //opreturn 2nd output. Transafers and burns ownership.   
             dust = dust_limit+count;
-            code += '\nOP_RETURN ' + opreturn + ',' + sat_to_btc(dust);
+            //for electrum <=4.4 : code += '\nOP_RETURN ' + opreturn + ',' + sat_to_btc(dust);
+            code += '\nscript(OP_RETURN ' + opreturn + '),' + sat_to_btc(dust);
             count += 1;
             sum_dust += dust;
           }
