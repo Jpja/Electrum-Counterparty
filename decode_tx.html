@@ -98,6 +98,7 @@
         let script_type = [];
         let script = [];
         let to_addr = [];
+        p2wsh = [];
         for (const x of json['outputs']) {
           let type = x['script_type'];
           script_type.push(type);
@@ -362,7 +363,7 @@
 
         if (id == 20 && block_height < 753500) { //Issuance, pre change 2022
           let asset_hex = cp_msg.substring(0,16);
-          let asset = parseInt(asset_hex, 16);
+          let asset = BigInt('0x'+asset_hex).toString(10);
           cp_msg = cp_msg.substring(16);
           let q_hex = cp_msg.substring(0,16);
           let q = parseInt(q_hex, 16);
@@ -452,7 +453,7 @@
 
         if ((id == 20 && block_height >= 753500) || (id == 22 & block_height >= 819300)) { //Issuance, post changes 2022 (9.60) and 2023 (9.61)
           let asset_hex = cp_msg.substring(0,16);
-          let asset = parseInt(asset_hex, 16);
+          let asset = BigInt('0x' + asset_hex).toString(10);
           cp_msg = cp_msg.substring(16);
           let q_hex = cp_msg.substring(0,16);
           let q = parseInt(q_hex, 16);
@@ -755,7 +756,7 @@
         if (id == 0) return 'BTC';
         if (id == 1) return 'XCP';
         if (id >= 95428956661682177) return 'numerical or sub-asset';
-        if (id > 9007199254740991) return 'max int error'; //a few very long asset names. would need bigint
+        if (id >   9007199254740991) return 'max int error'; //a few very long asset names. would need bigint
         let b26_digits = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'; 
         let n = id;
         let name = '';
@@ -919,8 +920,8 @@
 
           } else { //OLGA Stamp
             out +=  wl('Standard', 'STAMP (OLGA)');
-            let file_type = descr.split('.').pop();
-            file_type = file_type.toLowerCase();
+            //let file_type = descr.split('.').pop();
+            //file_type = file_type.toLowerCase();
             let hex = '';
             let dust = 0;
             for (let i = 0; i < p2wsh.length; i++) {
@@ -930,6 +931,7 @@
             let file_size_hex = hex.slice(0,4);
             let file_size = parseInt(file_size_hex, 16);
             let file = hex.slice(4,4+file_size*2);
+            /*
             //Display image if gif, png, jpeg or svg
             if (file_type === 'svg') {
               file_type = 'svg+xml';
@@ -938,6 +940,15 @@
               let base64 = btoa(file.match(/\w{2}/g).map(function(y){return String.fromCharCode(parseInt(y,16));}).join(''));
               out += '                   <img style="image-rendering:pixelated" src="data:image/' + file_type + ';base64, ' + base64 + '" /><br>';
             }
+            */
+            let base64 = btoa(file.match(/\w{2}/g).map(function(y){return String.fromCharCode(parseInt(y,16));}).join(''));
+            let file_type = '';
+            if (base64.slice(0,6) == 'R0lGOD') file_type = 'gif';
+            if (base64.slice(0,6) == 'iVBORw') file_type = 'png';
+            if (base64.slice(0,4) == '/9j/')   file_type = 'jpeg';
+            if (base64.slice(0,5) == 'PHN2Z')  file_type = 'svg+xml';  //"<svg"  -> PHN2Z
+            if (base64.slice(0,5) == 'PD94b')  file_type = 'svg+xml';  //"<?xml" -> PD94b
+            if (file_type != '') out += '                   <img style="image-rendering:pixelated" src="data:image/' + file_type + ';base64, ' + base64 + '" /><br>';
             out +=  wl('File size (hex)', file_size_hex);
             out +=  wl('File size (int)', file_size);
             out +=  wl('Burned (sat)', dust);
