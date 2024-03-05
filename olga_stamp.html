@@ -110,9 +110,9 @@
         }
         let file_extension = file_name.split('.').pop().toLowerCase();
         console.log(file_extension);
-        if(['jpeg','jpg','gif','png','svg'].includes(file_extension) == false) {
+        /*if(['jpeg','jpg','gif','png','svg'].includes(file_extension) == false) {
           print_result("File extension must be 'jpeg', 'jpg', 'gif', 'png' or 'svg'"); return;
-        }
+        }*/
         if (inp_len == 0) {
           print_result("No file selected"); return;
         }
@@ -243,18 +243,7 @@
           file_hex += "" + byteStr;
         }
         //document.getElementById("input_text").value = 'STAMP:' + file_name;
-        file_size = file_hex.length / 2;
-        
-        //TEMPORARY INDEXER BUG
-        //File names of certain lengths are excluded from the Stamp indexer.
-        //Until this is fixed, truncate names.
-        //We know "derp.png" is accepted so force 4 letter name and 3 letter extension (ie jpeg -> jpg)
-        //Remove this as soon as the bug is fixed.
-        file_name = file_name.toLowerCase();
-        file_name = file_name.replace('.jpeg','.jpg');
-        file_name = file_name.slice(0,4) + file_name.slice(-4); 
-        file_name = file_name.padStart(8, 'x');
-        
+        file_size = file_hex.length / 2;        
         description_text= 'STAMP:' + file_name;
       };
       fr.readAsBinaryString(this.files[0]);
