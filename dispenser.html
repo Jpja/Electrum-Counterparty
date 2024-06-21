@@ -203,7 +203,7 @@
         if (Number(info.btc_amount) != Number(amount_btc)) {
           print_result("Op_return encoding error. Wrong amount."); return;
         }
-        if (info.address != inp_address) {
+        if (info.hasOwnProperty('address') && info.address != inp_address) {
           print_result("Op_return encoding error. Wrong recipient address."); return;
         }
 
